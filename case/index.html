@@ -3,995 +3,934 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>娜乌斯嘉AI · 16 秒频道片头</title>
+<title>娜乌斯嘉AI 片头</title>
 <style>
   html,body{margin:0;height:100%;background:#000;overflow:hidden}
   #wrap{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:#000}
-  #stage{display:block;width:min(100vw,calc(100vh * 16 / 9));height:auto;aspect-ratio:16/9;background:#121419}
-  #play{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(10,11,14,.45);z-index:2}
-  #play button{font:700 30px "Noto Sans CJK SC","PingFang SC","Microsoft YaHei",sans-serif;letter-spacing:.08em;color:#ECE8E1;
-    background:#FF4757;border:0;padding:20px 52px;cursor:pointer;box-shadow:6px 6px 0 #8f2632;image-rendering:pixelated}
-  #play button:hover{background:#ff5d6b}
-  #play button:active{transform:translate(3px,3px);box-shadow:3px 3px 0 #8f2632}
+  #stage{display:block;width:min(100vw,177.7778vh);height:min(56.25vw,100vh);background:#121419}
+  #play{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.35);z-index:2}
+  #play button{font:700 30px "Noto Sans CJK SC","PingFang SC","Microsoft YaHei",sans-serif;color:#ECE8E1;background:#121419;
+    border:3px solid #FF4757;padding:18px 48px;cursor:pointer;letter-spacing:2px;box-shadow:6px 6px 0 #8a2733}
+  #play button:hover{background:#1b1e25}
 </style>
 </head>
 <body>
 <div id="wrap"><canvas id="stage" width="1920" height="1080"></canvas></div>
-<div id="play"><button id="playBtn" type="button">▶ 播放</button></div>
-<audio id="music" src="music.wav" preload="auto"></audio>
+<div id="play"><button id="btn">▶ 播放</button></div>
+<audio id="au" src="music.wav" preload="auto"></audio>
 <script>
-(function () {
 'use strict';
-/* =====================================================================
-   娜乌斯嘉AI · 16 秒频道片头 —— Canvas 2D，所有画面只由 t 决定
-   120 BPM · 一拍 0.5 s · 一小节 2 s · 共 8 小节
-   ===================================================================== */
-const W = 1920, H = 1080, FPS = 60;
+/* ==========================================================================
+   娜乌斯嘉AI · 16s channel ident — Canvas 2D, every pixel is a pure function of t
+   ========================================================================== */
+const W = 1920, H = 1080, FPS = 60, F1 = 1 / 60;   // F1: beat actions show on the beat frame itself
+const cv = document.getElementById('stage');
+const X = cv.getContext('2d');
 const FONT = '"Noto Sans CJK SC","PingFang SC","Microsoft YaHei",sans-serif';
-const BG = [18, 20, 25], RED = [255, 71, 87], YEL = [245, 196, 81], CRM = [236, 232, 225];
-const DRED = [140, 36, 48];
-const BGCSS = '#121419';
 
-/* ---------------- 小工具 ---------------- */
-const clamp = (x, a = 0, b = 1) => x < a ? a : x > b ? b : x;
+/* ---------- palette (only these four + their light/dark variations) ---------- */
+const BGc = [18, 20, 25], REDc = [255, 71, 87], YELc = [245, 196, 81], CREc = [236, 232, 225];
+const FACEc = [235, 232, 224];                 // title face: just under pure white
+const DREDc = [140, 40, 52];                   // dark red (red darkened toward bg)
+const BG = '#121419';
+
+/* ---------- math helpers ---------- */
+const clamp = (v, a = 0, b = 1) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
-const sstep = (a, b, x) => { const u = clamp((x - a) / (b - a)); return u * u * (3 - 2 * u); };
-const eIOC = u => u < .5 ? 4 * u * u * u : 1 - Math.pow(-2 * u + 2, 3) / 2;
-const eOC = u => 1 - Math.pow(1 - u, 3);
-const eIC = u => u * u * u;
-const eIQ = u => u * u;
-const eOQ = u => 1 - (1 - u) * (1 - u);
-const eIOS = u => -(Math.cos(Math.PI * u) - 1) / 2;
-const eOExpo = u => u >= 1 ? 1 : 1 - Math.pow(2, -10 * u);
-const eOBack = (u, s = 1.70158) => 1 + (s + 1) * Math.pow(u - 1, 3) + s * Math.pow(u - 1, 2);
-const css = (c, a) => (a === undefined || a >= 1) ? `rgb(${c[0] | 0},${c[1] | 0},${c[2] | 0})` : `rgba(${c[0] | 0},${c[1] | 0},${c[2] | 0},${a <= 0 ? 0 : a.toFixed(4)})`;
-const mixc = (a, b, t) => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
-
-function mulberry32(a) { return function () { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
-function hash2(a, b) {
-  let h = Math.imul(a | 0, 0x27d4eb2d) ^ Math.imul((b | 0) + 0x9e3779b9, 0x165667b1);
-  h ^= h >>> 15; h = Math.imul(h, 0x85ebca6b); h ^= h >>> 13; h = Math.imul(h, 0xc2b2ae35); h ^= h >>> 16;
+const sm = t => { t = clamp(t); return t * t * (3 - 2 * t); };
+const eOutC = t => { t = clamp(t); return 1 - (1 - t) ** 3; };
+const eOutQ = t => { t = clamp(t); return 1 - (1 - t) ** 2; };
+const eInC = t => { t = clamp(t); return t * t * t; };
+const eInQ = t => { t = clamp(t); return t * t; };
+const eIOC = t => { t = clamp(t); return t < .5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2; };
+const eIOS = t => { t = clamp(t); return -(Math.cos(Math.PI * t) - 1) / 2; };
+const eOutBack = (t, s = 1.70158) => { t = clamp(t); const c3 = s + 1; return 1 + c3 * (t - 1) ** 3 + s * (t - 1) ** 2; };
+const mix = (a, b, t) => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
+const css = c => `rgb(${c[0] | 0},${c[1] | 0},${c[2] | 0})`;
+const rgba = (c, a) => `rgba(${c[0] | 0},${c[1] | 0},${c[2] | 0},${clamp(a).toFixed(4)})`;
+function mulberry(a) { return function () { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+function hash(a, b = 0, c = 0) {
+  let h = (Math.imul(a | 0, 374761393) + Math.imul(b | 0, 668265263) + Math.imul(c | 0, 1274126177)) | 0;
+  h = Math.imul(h ^ (h >>> 13), 1103515245); h ^= h >>> 16; h = Math.imul(h, 2246822519); h ^= h >>> 13;
   return (h >>> 0) / 4294967296;
 }
-function vnoise(x, y) {
-  const xi = Math.floor(x), yi = Math.floor(y), xf = x - xi, yf = y - yi;
-  const u = xf * xf * (3 - 2 * xf), v = yf * yf * (3 - 2 * yf);
-  const a = hash2(xi, yi), b = hash2(xi + 1, yi), c = hash2(xi, yi + 1), d = hash2(xi + 1, yi + 1);
+function mk(w, h) { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; }
+
+/* ---------- value-noise terrain ---------- */
+function vnoise(x, z) {
+  const xi = Math.floor(x), zi = Math.floor(z), xf = x - xi, zf = z - zi;
+  const u = xf * xf * (3 - 2 * xf), v = zf * zf * (3 - 2 * zf);
+  const a = hash(xi, zi, 7), b = hash(xi + 1, zi, 7), c = hash(xi, zi + 1, 7), d = hash(xi + 1, zi + 1, 7);
   return lerp(lerp(a, b, u), lerp(c, d, u), v);
 }
-const fbm = (x, y) => vnoise(x, y) * .55 + vnoise(x * 2.03 + 17.1, y * 2.03 + 5.3) * .3 + vnoise(x * 4.1 + 3.7, y * 4.1 + 11.2) * .15;
-
-function mMul(a, b) {
-  return [a[0] * b[0] + a[2] * b[1], a[1] * b[0] + a[3] * b[1], a[0] * b[2] + a[2] * b[3], a[1] * b[2] + a[3] * b[3],
-    a[0] * b[4] + a[2] * b[5] + a[4], a[1] * b[4] + a[3] * b[5] + a[5]];
-}
-const mApply = (m, x, y) => [m[0] * x + m[2] * y + m[4], m[1] * x + m[3] * y + m[5]];
-function mkCanvas(w, h) { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; }
-
-/* ---------------- 版式常量 ---------------- */
-const HY1 = 600, HY2 = 540;          // 地平线：开场 / 标题段
-const SUNCELL = 8, SUNR = 30, SUNY = 480; // 太阳像素格、半径(格)、圆心
-const TC = 6;                          // 主标题像素格
-const SC = 3;                          // 副标题像素格
-const TCY = 492;                       // 标题中心 y（标题空间）
-const FLOATY = 270;                    // 主角像素漂浮高度
-const NG = 25;                         // 写字批次：5.0 → 6.5 每 1/32 音符一批
-const groupT = g => 5.0 + 0.0625 * g;
-const HOPT = [9.0, 9.5, 10.0, 10.5, 11.0, 11.5, 12.0];
-const SUBTXT = '记得关注我 带你拥抱未来';
-const SUBLOCK0 = 13.2, SUBLOCKD = 0.045;
-const BLACK_T = 15.85;                 // 帧 951 起纯黑（最后 9 帧）
-
-/* ---------------- 画布 ---------------- */
-const stage = document.getElementById('stage');
-const sctx = stage.getContext('2d');
-let sceneC, scx, glowC, gctx, blurA, bActx, blurB, bBctx, tlC, tlx, tintC, tintx, sweepC, swx, vignC, grainPats, scanPat;
-
-/* ---------------- 初始化：字形像素化 ---------------- */
-let INIT = false;
-let TW, TH, TX0, TY0, LM, LW, LH, CHARS, CELLS, PERIOD, SUB, POOL, STARS, ZTAB, PART;
-
-function rasterGlyph(ch, F, weight) {
-  const S = Math.ceil(F * 2);
-  const c = mkCanvas(S, S), x = c.getContext('2d', { willReadFrequently: true });
-  x.fillStyle = '#fff'; x.textBaseline = 'alphabetic'; x.font = `${weight} ${F}px ${FONT}`;
-  const pad = Math.round(F * 0.3), base = Math.round(F * 1.2);
-  x.fillText(ch, pad, base);
-  const d = x.getImageData(0, 0, S, S).data;
-  const m = new Uint8Array(S * S);
-  let c0 = S, c1 = -1, r0 = S, r1 = -1;
-  for (let r = 0; r < S; r++) for (let q = 0; q < S; q++) {
-    if (d[(r * S + q) * 4 + 3] >= 128) { m[r * S + q] = 1; if (q < c0) c0 = q; if (q > c1) c1 = q; if (r < r0) r0 = r; if (r > r1) r1 = r; }
-  }
-  return { S, m, c0, c1, r0, r1, pad, base, adv: x.measureText(ch).width };
+function fbm(x, z) { return vnoise(x, z) * .66 + vnoise(x * 2.07 + 5.3, z * 2.07 + 1.7) * .26 + vnoise(x * 4.3 + 9.1, z * 4.3 + 3.3) * .08; }
+function terrainH(x, z) {
+  const ax = Math.abs(x), v = Math.max(0, ax - 3.6);
+  if (v <= 0) return 0;
+  return Math.pow(v / 6, 1.5) * 3.3 * (0.3 + 1.15 * fbm(x * 0.12, z * 0.1));
 }
 
-function cellsCanvas(mask, mw, mh, cell, color) {
-  const c = mkCanvas(mw * cell, mh * cell), x = c.getContext('2d');
-  x.fillStyle = css(color);
-  for (let r = 0; r < mh; r++) {
-    let q = 0;
-    while (q < mw) {
-      if (mask[r * mw + q]) { let e = q; while (e < mw && mask[r * mw + e]) e++; x.fillRect(q * cell, r * cell, (e - q) * cell, cell); q = e; }
-      else q++;
+/* ==========================================================================
+   Pixel text: draw small, binarize, then use cells as crisp integer squares
+   ========================================================================== */
+function textMask(str, E, weight) {
+  const pad = 4, cw = Math.ceil(E * str.length * 1.15) + pad * 2, ch = Math.ceil(E * 1.6);
+  const o = mk(cw, ch), g = o.getContext('2d');
+  g.font = `${weight} ${E}px ${FONT}`; g.fillStyle = '#fff'; g.textBaseline = 'alphabetic';
+  const base = Math.round(E * 1.15);
+  g.fillText(str, pad, base);
+  const d = g.getImageData(0, 0, cw, ch).data, m = new Uint8Array(cw * ch);
+  for (let i = 0; i < cw * ch; i++) m[i] = d[i * 4 + 3] >= 128 ? 1 : 0;   // binarize: no half-transparent fringe
+  const bounds = [];
+  for (let i = 0; i <= str.length; i++) bounds.push(pad + g.measureText(str.slice(0, i)).width);
+  return { m, cw, ch, bounds, base, pad };
+}
+function cellsToPath(cells, ox, oy, c) {         // merge horizontal runs -> fewer rects
+  const rows = new Map();
+  for (const [q, r] of cells) { if (!rows.has(r)) rows.set(r, []); rows.get(r).push(q); }
+  const p = new Path2D();
+  for (const [r, qs] of rows) {
+    qs.sort((a, b) => a - b);
+    let s = qs[0], prev = qs[0];
+    for (let i = 1; i <= qs.length; i++) {
+      const q = qs[i];
+      if (q === prev + 1) { prev = q; continue; }
+      p.rect(ox + s * c, oy + r * c, (prev - s + 1) * c, c);
+      s = q; prev = q;
     }
   }
-  return c;
+  return p;
 }
 
-function layoutLine(chars, F, weight, track) {
-  // 返回每个字的栅格与笔位
-  const gl = chars.map(ch => ch === ' ' ? null : rasterGlyph(ch, F, weight));
-  let pen = 0; const out = [];
-  for (let i = 0; i < chars.length; i++) {
-    const g = gl[i];
-    if (!g) { out.push({ space: true, pen }); pen += Math.round(F * 0.5); continue; }
-    out.push({ g, pen: Math.round(pen) });
-    pen += g.adv + track;
+/* ---------- TITLE: 娜乌斯嘉AI ---------- */
+const TE = 30, TC = 8;                     // glyph em in cells, cell size in px
+const TSTR = '娜乌斯嘉AI';
+const TM = textMask(TSTR, TE, 700);
+let tMinC = 1e9, tMaxC = -1, tMinR = 1e9, tMaxR = -1;
+for (let r = 0; r < TM.ch; r++) for (let q = 0; q < TM.cw; q++) if (TM.m[r * TM.cw + q]) {
+  tMinC = Math.min(tMinC, q); tMaxC = Math.max(tMaxC, q); tMinR = Math.min(tMinR, r); tMaxR = Math.max(tMaxR, r);
+}
+const TITLE_CY = 418;
+const TOX = Math.round(960 - ((tMaxC - tMinC + 1) * TC) / 2) - tMinC * TC;   // screen x of cell col 0
+const TOY = Math.round(TITLE_CY - ((tMaxR - tMinR + 1) * TC) / 2) - tMinR * TC;
+const TXL = TOX + tMinC * TC, TXR = TOX + (tMaxC + 1) * TC, TYT = TOY + tMinR * TC, TYB = TOY + (tMaxR + 1) * TC;
+const TW = TXR - TXL;
+const CH = [];
+for (let k = 0; k < TSTR.length; k++) CH.push({ cells: [], x0: 1e9, x1: -1e9, y0: 1e9, y1: -1e9 });
+const TCELLS = [];
+for (let r = 0; r < TM.ch; r++) for (let q = 0; q < TM.cw; q++) if (TM.m[r * TM.cw + q]) {
+  let k = 0; while (k < TSTR.length - 1 && q + 0.5 >= TM.bounds[k + 1]) k++;
+  const ch = CH[k]; ch.cells.push([q, r]);
+  const x = TOX + q * TC, y = TOY + r * TC;
+  ch.x0 = Math.min(ch.x0, x); ch.x1 = Math.max(ch.x1, x + TC); ch.y0 = Math.min(ch.y0, y); ch.y1 = Math.max(ch.y1, y + TC);
+  TCELLS.push({ x, y, k });
+}
+for (const ch of CH) {
+  ch.path = cellsToPath(ch.cells, TOX, TOY, TC);
+  ch.cx = (ch.x0 + ch.x1) / 2;
+  // landing point on the top of the glyph: the highest cell row near the centre column band
+  let top = 1e9;
+  for (const [q, r] of ch.cells) { const x = TOX + q * TC + TC / 2; if (Math.abs(x - ch.cx) < (ch.x1 - ch.x0) * 0.22) top = Math.min(top, TOY + r * TC); }
+  ch.top = top < 1e9 ? top : ch.y0;
+}
+// period spot (red pixel full stop after "AI")
+const PSZ = 24;
+const PER = { x: CH[5].x1 + 4 * TC + PSZ / 2, y: TYB };   // centre-x, bottom-y
+// glow canvases per char (soft bloom behind crisp faces)
+function makeGlow(ch, col) {
+  const m = 60, w = Math.ceil(ch.x1 - ch.x0 + 2 * m), h = Math.ceil(ch.y1 - ch.y0 + 2 * m);
+  const a = mk(w, h), ag = a.getContext('2d');
+  ag.translate(m - ch.x0, m - ch.y0); ag.fillStyle = css(col); ag.fill(ch.path);
+  const b = mk(w, h), bg = b.getContext('2d');
+  bg.filter = 'blur(26px)'; bg.globalAlpha = 0.85; bg.drawImage(a, 0, 0);
+  bg.filter = 'blur(9px)'; bg.globalAlpha = 0.55; bg.drawImage(a, 0, 0);
+  bg.filter = 'none';
+  return { c: b, x: ch.x0 - m, y: ch.y0 - m };
+}
+CH.forEach((ch, k) => { ch.glow = makeGlow(ch, k >= 4 ? YELc : CREc); });
+// dark plate behind title (keeps grid from crossing the letters)
+function makePlate(x0, y0, x1, y1, pad, blur) {
+  const m = blur * 2 + pad, w = Math.ceil(x1 - x0 + 2 * m), h = Math.ceil(y1 - y0 + 2 * m);
+  const c = mk(w, h), g = c.getContext('2d');
+  g.filter = `blur(${blur}px)`; g.fillStyle = BG; g.fillRect(m - pad, m - pad, x1 - x0 + 2 * pad, y1 - y0 + 2 * pad);
+  return { c, x: x0 - m, y: y0 - m };
+}
+const TPLATE = makePlate(TXL, TYT, PER.x + 20, TYB, 34, 30);
+
+/* ---------- SUBTITLE: 记得关注我 带你拥抱未来 ---------- */
+const SE = 18, SC = 4;
+const SSTR = '记得关注我 带你拥抱未来';
+const SM = textMask(SSTR, SE, 700);
+function glyphCells(chr) {                      // one glyph rendered alone at origin
+  const mm = textMask(chr, SE, 700); const cells = [];
+  for (let r = 0; r < mm.ch; r++) for (let q = 0; q < mm.cw; q++) if (mm.m[r * mm.cw + q]) cells.push([q - mm.pad, r]);
+  return cells;
+}
+const SLOTS = [];
+let sMinR = 1e9, sMaxR = -1;
+for (let i = 0; i < SSTR.length; i++) {
+  if (SSTR[i] === ' ') continue;
+  const cells = glyphCells(SSTR[i]);
+  for (const [, r] of cells) { sMinR = Math.min(sMinR, r); sMaxR = Math.max(sMaxR, r); }
+  SLOTS.push({ chr: SSTR[i], col: Math.round(SM.bounds[i] - SM.pad), cells });
+}
+const S_TOTALW = Math.round((SM.bounds[SSTR.length] - SM.pad)) * SC;
+const SOX = Math.round(960 - S_TOTALW / 2);
+const TITLE_UP = -44;                                 // title rises at 13 s
+const SOY = TYB + TITLE_UP + 34 - sMinR * SC;         // subtitle tucked right under the title
+for (const s of SLOTS) {
+  s.x = SOX + s.col * SC;
+  s.path = cellsToPath(s.cells, s.x, SOY, SC);
+}
+const S_Y0 = SOY + sMinR * SC, S_Y1 = SOY + (sMaxR + 1) * SC;
+const SPLATE = makePlate(SOX - 10, S_Y0, SOX + S_TOTALW + 10, S_Y1, 26, 22);
+// subtitle glow canvas
+const SGLOW = (() => {
+  const m = 50, w = S_TOTALW + 2 * m, h = (S_Y1 - S_Y0) + 2 * m;
+  const a = mk(w, h), ag = a.getContext('2d'); ag.translate(m - SOX, m - S_Y0); ag.fillStyle = css(CREc);
+  for (const s of SLOTS) ag.fill(s.path);
+  const b = mk(w, h), bg = b.getContext('2d'); bg.filter = 'blur(10px)'; bg.drawImage(a, 0, 0); bg.filter = 'none';
+  return { c: b, x: SOX - m, y: S_Y0 - m };
+})();
+// scramble pool (random hanzi, pre-binarized)
+const POOLSTR = '光年数据星河代码信号电流算法宇宙梦境频道像素未来拥抱关注记得带你我们时空回声幻影深空引擎协议矩阵量子网络脉冲波形芯片磁场轨道粒子火花极光棱镜晶体终端坐标维度意识觉醒镜像核心心跳节拍旋律和弦霓虹黄昏黎明夜幕海潮风暴雷鸣闪烁';
+const POOL = [];
+for (const chr of POOLSTR) POOL.push(cellsToPath(glyphCells(chr), 0, 0, SC));
+
+/* ---------- SUN (pixel disc, 72 cell rows, stepped colour bands, lower gaps) ---------- */
+const SUN_N = 72, SUN_R0 = 250;
+const SUN_GAPS = new Set([39, 43, 44, 48, 49, 53, 54, 55, 59, 60, 61]);
+const HY0 = 560;
+function sunR(t) { return SUN_R0 * (1 - 0.28 * eIOC((t - 3.5) / 0.483)); }
+function sunRowColor(r) { const band = Math.floor(r / 6) / 11; return mix(YELc, REDc, Math.pow(band, 1.05)); }
+function sunRows(R, hy, fn) {
+  const cx = 960, cy = hy - 0.7 * R, cs = 2 * R / SUN_N, half = SUN_N / 2;
+  for (let r = 0; r < SUN_N; r++) {
+    if (SUN_GAPS.has(r)) continue;
+    const v = (r + 0.5) / half - 1, h = Math.sqrt(Math.max(0, 1 - v * v));
+    const q0 = Math.ceil(half * (1 - h) - 0.5), q1 = Math.floor(half * (1 + h) - 0.5);
+    if (q1 < q0) continue;
+    const y0 = Math.round(cy - R + r * cs), y1 = Math.round(cy - R + (r + 1) * cs);
+    if (y0 >= hy) continue;
+    fn(r, q0, q1, y0, y1, cx, cy, cs);
   }
-  // 墨迹范围
-  let minC = 1e9, maxC = -1e9, minR = 1e9, maxR = -1e9;
-  for (const o of out) if (!o.space) {
-    const g = o.g; minC = Math.min(minC, o.pen + g.c0 - g.pad); maxC = Math.max(maxC, o.pen + g.c1 - g.pad);
-    minR = Math.min(minR, g.r0 - g.base); maxR = Math.max(maxR, g.r1 - g.base);
-  }
-  return { out, minC, maxC, minR, maxR, inkW: maxC - minC + 1, inkH: maxR - minR + 1 };
 }
 
-function init() {
-  if (INIT) return; INIT = true;
-  sceneC = mkCanvas(W, H); scx = sceneC.getContext('2d');
-  glowC = mkCanvas(480, 270); gctx = glowC.getContext('2d');
-  blurA = mkCanvas(480, 270); bActx = blurA.getContext('2d');
-  blurB = mkCanvas(240, 135); bBctx = blurB.getContext('2d');
-
-  /* ---- 主标题 ---- */
-  const TCH = ['娜', '乌', '斯', '嘉', 'A', 'I'];
-  const targetCols = Math.round(W * 0.60 / TC);   // 标题宽约 60%
-  let F = 38, L;
-  for (let it = 0; it < 4; it++) { L = layoutLine(TCH, F, 700, 1); F = Math.max(20, Math.round(F * targetCols / L.inkW)); }
-  L = layoutLine(TCH, F, 700, 1);
-  TW = L.inkW; TH = L.inkH + 0;
-  const PERW = 4;                                    // 句点 4 格 = 24 px
-  const totalW = (TW + 3 + PERW) * TC;               // 预留句点位置
-  TX0 = Math.round(960 - totalW / 2 + (3 + PERW) * TC * 0.25);
-  TY0 = Math.round(TCY - TH * TC / 2);
-  LM = 60; LW = TW * TC + 2 * LM; LH = TH * TC + 2 * LM;
-  CHARS = []; CELLS = [];
-  for (let i = 0; i < L.out.length; i++) {
-    const o = L.out[i], g = o.g;
-    const mc0 = o.pen + g.c0 - g.pad - L.minC, mr0 = g.r0 - g.base - L.minR;
-    const mw = g.c1 - g.c0 + 1, mh = g.r1 - g.r0 + 1;
-    const mask = new Uint8Array(mw * mh);
-    for (let r = 0; r < mh; r++) for (let q = 0; q < mw; q++) {
-      if (g.m[(g.r0 + r) * g.S + g.c0 + q]) { mask[r * mw + q] = 1; CELLS.push({ c: mc0 + q, r: mr0 + r, k: i }); }
+/* ---------- PARTICLES (born from the sun's cells at the explosion frame) ---------- */
+const P_R = SUN_R0 * 0.72;
+const SUNC = { x: 960, y: HY0 - 0.7 * P_R };
+const PART = [];
+{
+  const rnd = mulberry(1234);
+  sunRows(P_R, HY0, (r, q0, q1, y0, y1, cx, cy, cs) => {
+    const col = sunRowColor(r);
+    for (let q = q0; q <= q1; q++) {
+      const x0 = Math.round(cx - P_R + q * cs), x1 = Math.round(cx - P_R + (q + 1) * cs);
+      PART.push({ ox: (x0 + x1) / 2, oy: (y0 + y1) / 2, cs: x1 - x0, col: rnd() < 0.2 ? CREc : col });
     }
-    // 落点：字中心 ±40px 范围内最高的墨迹
-    const midq = Math.round(mw / 2), span = Math.max(2, Math.round(40 / TC));
-    let topR = mh;
-    for (let r = 0; r < mh && topR === mh; r++) for (let q = Math.max(0, midq - span); q < Math.min(mw, midq + span); q++) if (mask[r * mw + q]) { topR = r; break; }
-    CHARS.push({
-      ch: TCH[i], c0: mc0, r0: mr0, mw, mh, mask,
-      face: cellsCanvas(mask, mw, mh, TC, CRM), yel: cellsCanvas(mask, mw, mh, TC, YEL),
-      ext1: cellsCanvas(mask, mw, mh, TC, RED), ext2: cellsCanvas(mask, mw, mh, TC, DRED),
-      cx: TX0 + (mc0 + mw / 2) * TC, top: TY0 + (mr0 + topR) * TC,
-      bottom: TY0 + (mr0 + mh) * TC, right: TX0 + (mc0 + mw) * TC
-    });
-  }
-  const I = CHARS[5];
-  PERIOD = { x: I.right + 2 * TC, yb: I.bottom, s: PERW * TC };
-  PERIOD.cx = PERIOD.x + PERIOD.s / 2;
-  tlC = mkCanvas(LW, LH); tlx = tlC.getContext('2d');
-  tintC = mkCanvas(LW, LH); tintx = tintC.getContext('2d');
-  sweepC = mkCanvas(LW, LH); swx = sweepC.getContext('2d');
-
-  /* ---- 副标题（像素格 3px）---- */
-  const SCH = SUBTXT.split('');
-  const titleInkW = TW * TC;
-  let F2 = 24, L2;
-  for (let it = 0; it < 4; it++) {
-    L2 = layoutLine(SCH, F2, 700, 0);
-    if (L2.inkW * SC > titleInkW * 0.74) F2--; else break;
-  }
-  L2 = layoutLine(SCH, F2, 700, 0);
-  const subW = L2.inkW * SC;
-  const SX0 = Math.round(960 - subW / 2);
-  const SY0 = Math.round(TY0 + TH * TC + 2 * TC + 26);
-  SUB = { F: F2, x0: SX0, y0: SY0, w: subW, items: [] };
-  let li = 0;
-  for (let i = 0; i < L2.out.length; i++) {
-    const o = L2.out[i]; if (o.space) continue;
-    const g = o.g;
-    const mc0 = o.pen + g.c0 - g.pad - L2.minC, mr0 = g.r0 - g.base - L2.minR;
-    const mw = g.c1 - g.c0 + 1, mh = g.r1 - g.r0 + 1;
-    const mask = new Uint8Array(mw * mh);
-    for (let r = 0; r < mh; r++) for (let q = 0; q < mw; q++) if (g.m[(g.r0 + r) * g.S + g.c0 + q]) mask[r * mw + q] = 1;
-    SUB.items.push({
-      x: SX0 + mc0 * SC, y: SY0 + mr0 * SC, cx: SX0 + (o.pen - L2.minC + F2 / 2) * SC, slotX: SX0 + (o.pen - L2.minC) * SC,
-      face: cellsCanvas(mask, mw, mh, SC, CRM), sh: cellsCanvas(mask, mw, mh, SC, DRED), idx: li++
-    });
-  }
-  SUB.lineTop = SY0 + (L2.minR - L2.minR) * SC; SUB.h = L2.inkH * SC;
-  // 乱码字池
-  const poolStr = '光影数据像素信号频率节拍电波星河宇宙梦境代码算法矩阵回声色彩霓虹镜像时空旋律引擎脉冲轨道量子晶体编织闪烁坐标维度通道';
-  POOL = [];
-  const baseline = L2.out.find(o => !o.space).g.base;
-  for (const ch of poolStr) {
-    const g = rasterGlyph(ch, F2, 700);
-    const mw = F2, mh = Math.ceil(F2 * 1.05);
-    const mask = new Uint8Array(mw * mh);
-    // 与正确字共享基线与笔位
-    for (let r = 0; r < mh; r++) for (let q = 0; q < mw; q++) {
-      const gr = r + L2.minR + g.base, gq = q + g.pad;
-      if (gr >= 0 && gr < g.S && gq >= 0 && gq < g.S && g.m[gr * g.S + gq]) mask[r * mw + q] = 1;
-    }
-    POOL.push({ face: cellsCanvas(mask, mw, mh, SC, CRM), red: cellsCanvas(mask, mw, mh, SC, RED) });
-  }
-
-  /* ---- 星点 ---- */
-  const rs = mulberry32(77); STARS = [];
-  for (let i = 0; i < 150; i++) STARS.push({ x: rs() * W, y: 18 + Math.pow(rs(), 1.25) * 560, s: rs() < .18 ? 6 : 3, ph: rs() * 6.283, sp: .6 + rs() * 1.8, c: rs() < .3 ? YEL : CRM, b: .35 + rs() * .65 });
-
-  /* ---- 镜头前进距离表（速度先慢后快，4 s 后急刹）---- */
-  const DT = 1 / 1200, N = 16 * 1200 + 2; ZTAB = new Float64Array(N);
-  let z = 0; ZTAB[0] = 0;
-  for (let i = 1; i < N; i++) { const tm = (i - .5) * DT; z += camSpeed(tm) * DT; ZTAB[i] = z; }
-
-  /* ---- 粒子 ---- */
-  buildParticles();
-
-  /* ---- 质感层 ---- */
-  vignC = mkCanvas(W, H);
-  { const v = vignC.getContext('2d'); const R = Math.hypot(960, 540); const gr = v.createRadialGradient(960, 540, 0, 960, 540, R);
-    for (let i = 0; i <= 24; i++) { const u = i / 24; const a = 0.6 * Math.pow(sstep(0.42, 1.0, u), 1.15); gr.addColorStop(u, `rgba(0,0,0,${a.toFixed(4)})`); }
-    v.fillStyle = gr; v.fillRect(0, 0, W, H); }
-  grainPats = [];
-  const rg = mulberry32(991);
-  for (let k = 0; k < 6; k++) {
-    const c = mkCanvas(256, 256), x = c.getContext('2d'), id = x.createImageData(256, 256);
-    for (let i = 0; i < 256 * 256; i++) { const n = (rg() + rg() + rg() - 1.5) * 2; const v = Math.max(0, Math.min(255, 128 + n * 26)); id.data[i * 4] = id.data[i * 4 + 1] = id.data[i * 4 + 2] = v; id.data[i * 4 + 3] = 255; }
-    x.putImageData(id, 0, 0); grainPats.push(sctx.createPattern(c, 'repeat'));
-  }
-  { const c = mkCanvas(4, 4), x = c.getContext('2d'); x.fillStyle = '#000'; x.fillRect(0, 0, 4, 1); x.globalAlpha = .35; x.fillRect(0, 1, 4, 1); scanPat = sctx.createPattern(c, 'repeat'); }
-}
-
-/* ---------------- 镜头 ---------------- */
-function camSpeed(t) {
-  if (t < 4) return 1.0 + 15.5 * Math.pow(t / 4, 3);               // 缓入加速
-  if (t < 5.4) return lerp(16.5, 1.15, eOC((t - 4) / 1.4));          // 爆炸后刹住
-  return lerp(1.15, 0.85, sstep(5.4, 10, t));
-}
-function camZ(t) { const f = clamp(t, 0, 16) * 1200; const i = Math.floor(f); const r = f - i; return ZTAB[i] + (ZTAB[Math.min(i + 1, ZTAB.length - 1)] - ZTAB[i]) * r; }
-
-// 标题段镜头：8 s 起缓推 3% + 轻微三维摇摆；13 s 标题上移
-function groupState(t) {
-  const r = sstep(8, 9, t);
-  const u = clamp((t - 8) / 7);
-  const s = 1 + 0.03 * eIOS(u);
-  const roll = r * 0.0030 * Math.sin((t - 8) * 2 * Math.PI / 6.4);
-  const yaw = r * 0.0085 * Math.sin((t - 8) * 2 * Math.PI / 5.1 + 0.6);
-  const pitch = r * 0.006 * Math.sin((t - 8) * 2 * Math.PI / 7.3 + 1.9);
-  const shift = t >= 13 ? -44 * eOExpo(clamp((t - 13) / 0.55)) : 0;
-  return { s, roll, yaw, pitch, shift };
-}
-function groupMatrix(t) {
-  const g = groupState(t);
-  const c = Math.cos(g.roll), sn = Math.sin(g.roll);
-  let M = [1, 0, 0, 1, 960, TCY];
-  M = mMul(M, [c, sn, -sn, c, 0, 0]);
-  M = mMul(M, [g.s * (1 - Math.abs(g.yaw) * .5), g.yaw * .32, g.pitch * .25, g.s, 0, 0]);
-  M = mMul(M, [1, 0, 0, 1, -960, -TCY + g.shift]);
-  return M;
-}
-function camState(t) {
-  const g = groupState(t);
-  const a = clamp((t - 4) / 0.9), b = clamp((t - 4) / 1.6);
-  const bright = t < 4 ? 1 : lerp(1, 0.4, eOC(a));
-  return {
-    zc: camZ(t),
-    amp: t < 4 ? 1 : lerp(1, 0.06, eOC(a)) + 0.30 * eIOS(clamp((t - 8.3) / 2.4)),
-    bright,
-    hy: t < 4 ? HY1 : lerp(HY1, HY2, eIOS(b)),
-    camH: t < 4 ? 0.5 : lerp(0.5, 0.82, eIOS(b)),
-    camX: 0.32 * Math.sin(t * 0.85) * (1 - sstep(4, 6, t)),
-    f: 1000 * g.s,
-    roll: 0.0075 * Math.sin(t * 0.8 + 0.4) * (1 - sstep(4, 6, t)) + g.roll,
-    push: g.s
-  };
-}
-function beatPulse(t) {
-  if ((t >= 3.75 && t < 4) || (t >= 14.75 && t < 15)) return 0;
-  const b = Math.floor(t * 2 + 1e-9) / 2, tau = t - b;
-  const down = (Math.round(b * 2) % 4 === 0) ? 1 : 0.55;
-  return down * Math.exp(-tau / 0.13);
-}
-
-/* ---------------- 背景：星点 + 线框地形 ---------------- */
-function drawStars(ctx, t, cam) {
-  const k = t < 4 ? 1 : lerp(1, 0.75, eOC(clamp((t - 4) / 0.9)));
-  const dy = cam.hy - HY1;
-  for (const s of STARS) {
-    let y = s.y + dy;
-    if (y > cam.hy - 14) continue;
-    let x = 960 + (s.x - 960) * cam.push - (cam.roll * (y - cam.hy));
-    y = y + cam.roll * (x - 960);
-    const tw = 0.55 + 0.45 * Math.sin(t * s.sp + s.ph);
-    const fade = sstep(cam.hy - 14, cam.hy - 120, y);
-    const a = (0.16 + 0.42 * tw) * s.b * k * fade;
-    if (a < 0.01) continue;
-    ctx.fillStyle = css(s.c, a);
-    ctx.fillRect(Math.round(x / 3) * 3, Math.round(y / 3) * 3, s.s, s.s);
-  }
-}
-
-const HCACHE = new Map();
-function rowHeights(k) {
-  let a = HCACHE.get(k);
-  if (a) return a;
-  a = new Float32Array(105);
-  for (let j = 0; j < 105; j++) {
-    const X = j - 52, ax = Math.abs(X);
-    const n = fbm(X * 0.23 + 40.5, k * 0.23 + 7.1);
-    const wall = ax < 2 ? 0 : Math.min(7.5, 3.3 * Math.pow((ax - 2) / 6, 1.45));
-    a[j] = wall * (0.4 + 1.15 * n) + (ax < 2 ? 0 : 0.18 * sstep(2, 3.2, ax) * n);
-  }
-  if (HCACHE.size > 400) HCACHE.clear();
-  HCACHE.set(k, a);
-  return a;
-}
-
-function drawTerrain(ctx, t, cam) {
-  const ZN = 0.15, ZF = 38, NC = 105;
-  const k0 = Math.ceil(cam.zc + ZN), k1 = Math.floor(cam.zc + ZF);
-  const cr = Math.cos(cam.roll), sr = Math.sin(cam.roll);
-  const cx = 960, hy = cam.hy, f = cam.f;
-  const pulse = beatPulse(t) * (t < 4 ? 0.16 : 0.22);
-  let px = null, py = null, pj0 = 0, pj1 = NC - 1;
-  gctx.setTransform(0.25, 0, 0, 0.25, 0, 0); gctx.lineJoin = 'round';
-  ctx.lineJoin = 'round'; ctx.lineCap = 'butt';
-  for (let k = k1; k >= k0; k--) {
-    const Zr = k - cam.zc;
-    const hts = rowHeights(k);
-    const xs = new Float32Array(NC), ys = new Float32Array(NC);
-    for (let j = 0; j < NC; j++) {
-      const X = j - 52 - cam.camX, h = hts[j] * cam.amp;
-      const sx = f * X / Zr, sy = -f * (h - cam.camH) / Zr;
-      xs[j] = cx + sx * cr - sy * sr; ys[j] = hy + sx * sr + sy * cr;
-    }
-    let j0 = 0, j1 = NC - 1;
-    while (j0 < NC - 1 && xs[j0 + 1] < -250) j0++;
-    while (j1 > 0 && xs[j1 - 1] > W + 250) j1--;
-    if (px) {
-      const Zp = Zr + 1;
-      // 1) 用底色填充这一条带（近处遮挡远处）
-      const a0 = Math.max(0, Math.min(j0, pj0) - 1), a1 = Math.min(NC - 1, Math.max(j1, pj1) + 1);
-      const strip = new Path2D();
-      strip.moveTo(px[a0], py[a0]);
-      for (let j = a0 + 1; j <= a1; j++) strip.lineTo(px[j], py[j]);
-      for (let j = a1; j >= a0; j--) strip.lineTo(xs[j], ys[j]);
-      strip.closePath(); ctx.fillStyle = BGCSS; ctx.fill(strip);
-      gctx.globalCompositeOperation = 'destination-out'; gctx.fillStyle = '#000'; gctx.fill(strip); gctx.globalCompositeOperation = 'source-over';
-      // 2) 线：远行 + 纵线
-      const fade = Math.pow(clamp(1 - Zp / ZF), 1.35) * sstep(ZF, ZF - 6, Zp);
-      const a = cam.bright * fade * (1 + pulse) * 1.25;
-      if (a > 0.004) {
-        const lines = new Path2D();
-        lines.moveTo(px[a0], py[a0]);
-        for (let j = a0 + 1; j <= a1; j++) lines.lineTo(px[j], py[j]);
-        for (let j = a0; j <= a1; j++) { lines.moveTo(px[j], py[j]); lines.lineTo(xs[j], ys[j]); }
-        const lw = clamp(3.0 / Math.sqrt(Zp), 1.2, 2.6);
-        ctx.strokeStyle = css(RED, Math.min(1, a)); ctx.lineWidth = lw; ctx.stroke(lines);
-        if (Zp < 9) { gctx.strokeStyle = css(RED, Math.min(1, a * 0.6)); gctx.lineWidth = 7; gctx.stroke(lines); }
-      }
-    } else {
-      ctx.beginPath(); ctx.moveTo(xs[0], ys[0]);
-      for (let j = 1; j < NC; j++) ctx.lineTo(xs[j], ys[j]);
-      ctx.lineTo(xs[NC - 1], H + 4000); ctx.lineTo(xs[0], H + 4000); ctx.closePath();
-      ctx.fillStyle = BGCSS; ctx.fill();
-    }
-    px = xs; py = ys; pj0 = j0; pj1 = j1;
-  }
-}
-
-/* ---------------- 太阳 ---------------- */
-function sunState(t) {
-  let sc = 1, br = 0;
-  if (t >= 3.5) { const u = clamp((t - 3.5) / (3.9833 - 3.5)); sc = 1 - 0.28 * eIOS(u); br = eIQ(u); }
-  return { sc, br, white: t >= 4.0 };
-}
-function sunRows(t, fn) {
-  const st = sunState(t);
-  const R = SUNR * st.sc;
-  const n = Math.ceil(R);
-  for (let j = -n; j < n; j++) {
-    const yc = j + 0.5;
-    if (Math.abs(yc) > R) continue;
-    const half = Math.round(Math.sqrt(R * R - yc * yc));
-    if (half <= 0) continue;
-    if (j > 0) { // 下半部分的横向空隙，缓慢下移
-      const q = j / R;
-      const ph = (j * 5.2 / SUNR - t * 0.55) % 1; const fr = ph < 0 ? ph + 1 : ph;
-      if (fr < 0.05 + 0.36 * q) continue;
-    }
-    const q = (j + R) / (2 * R);
-    fn(j, half, q, st);
-  }
-}
-function drawSun(ctx, t) {
-  const st = sunState(t);
-  const R = SUNR * st.sc * SUNCELL;
-  const p = beatPulse(t) * 0.5;
-  // 柔和泛光：只在太阳周围
-  const ga = st.white ? 0.55 : (0.20 + 0.25 * st.br + 0.05 * p);
-  const gr = ctx.createRadialGradient(960, SUNY, R * 0.85, 960, SUNY, R * (st.white ? 2.0 : 1.75));
-  gr.addColorStop(0, css(st.white ? CRM : mixc(RED, YEL, 0.35), ga));
-  gr.addColorStop(0.35, css(RED, ga * 0.35));
-  gr.addColorStop(1, css(RED, 0));
-  ctx.fillStyle = gr; ctx.beginPath(); ctx.arc(960, SUNY, R * 2.05, 0, 6.2832); ctx.fill();
-  sunRows(t, (j, half, q, s) => {
-    let c;
-    if (s.white) c = CRM;
-    else { c = mixc(YEL, RED, sstep(0.06, 0.74, q)); c = mixc(c, CRM, 0.30 * s.br); c = mixc(c, [255, 255, 255], 0.05 * p); }
-    ctx.fillStyle = css(c);
-    ctx.fillRect(960 - half * SUNCELL, SUNY + j * SUNCELL, half * 2 * SUNCELL, SUNCELL);
   });
-}
-function sunGlowSource(t) {
-  const st = sunState(t);
-  gctx.setTransform(0.25, 0, 0, 0.25, 0, 0);
-  gctx.globalAlpha = st.white ? 0.9 : 0.42 + 0.35 * st.br;
-  sunRows(t, (j, half, q, s) => {
-    if (SUNY + j * SUNCELL >= HY1 - 4) return;
-    gctx.fillStyle = css(s.white ? CRM : mixc(YEL, RED, sstep(0.06, 0.74, q)));
-    gctx.fillRect(960 - half * SUNCELL, SUNY + j * SUNCELL, half * 2 * SUNCELL, SUNCELL);
+  const Cx = 960, Cy = TITLE_CY + 6, Rx = 830, Ry = 165;
+  for (const p of PART) {
+    let dx = p.ox - SUNC.x, dy = p.oy - SUNC.y; let L = Math.hypot(dx, dy) || 1; dx /= L; dy /= L;
+    const ang = Math.atan2(dy, dx) + (rnd() - 0.5) * 0.7;
+    p.z = rnd();                                  // 0 far .. 1 near
+    p.dx = Math.cos(ang); p.dy = Math.sin(ang);
+    p.dist = (220 + 880 * Math.pow(rnd(), 0.75)) * (0.55 + 0.9 * p.z) * (0.6 + 0.6 * L / P_R);
+    // exploded position at 4.4 -> choose orbit phase so the vortex picks it up where it is
+    const g = 1 - Math.exp(-3.6 * 0.35);
+    const ex = p.ox + p.dx * p.dist * g, ey = p.oy + p.dy * p.dist * g;
+    p.rho = 0.62 + 0.55 * rnd();
+    p.phi0 = Math.atan2((ex - Cx) / Rx, (ey - Cy) / Ry);
+    p.w = 2.3 + 0.9 * rnd();
+  }
+  // targets: title cells, written left -> right
+  const order = PART.map((p, i) => i);
+  for (let i = order.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); [order[i], order[j]] = [order[j], order[i]]; }
+  const invE = x => Math.acos(1 - 2 * clamp(x)) / Math.PI;   // inverse of eIOS
+  order.forEach((pi, n) => {
+    const p = PART[pi];
+    const cell = n < TCELLS.length ? TCELLS[n] : TCELLS[Math.floor(rnd() * TCELLS.length)];
+    p.tx = cell.x + TC / 2; p.ty = cell.y + TC / 2; p.cell = n < TCELLS.length ? n : -1;
+    const xn = (cell.x + TC / 2 - TXL) / TW;
+    p.T = 4.95 + 1.55 * invE(xn) * 0.965 + rnd() * 0.05;
+    p.F = 0.5 + 0.55 * rnd();
+    p.dep = p.T - p.F;
+    p.bx = -(110 + 170 * rnd()); p.by = (rnd() - 0.6) * 160;
+    if (p.cell >= 0) cell.T = p.T;
   });
-  gctx.globalAlpha = 1;
+  for (const c of TCELLS) if (c.T === undefined) c.T = 6.5;
+}
+const CELLS_BY_T = TCELLS.slice().sort((a, b) => a.T - b.T);
+const P_CX = 960, P_CY = TITLE_CY + 6, P_RX = 830, P_RY = 165;
+function preFlight(p, t, o) {
+  const u = Math.max(0, t - 4.032), g = 1 - Math.exp(-3.6 * u);
+  const ex = p.ox + p.dx * p.dist * g, ey = p.oy + p.dy * p.dist * g;
+  if (t < 4.4) { o.x = ex; o.y = ey; o.z = p.z; return o; }
+  const s = sm((t - 4.4) / 0.75), tt = t - 4.4;
+  const phi = p.phi0 + p.w * tt + 0.35 * tt * tt;
+  const rr = p.rho * (1 - 0.32 * sm((t - 4.8) / 1.6));
+  const qx = P_CX + P_RX * rr * Math.sin(phi), qy = P_CY + P_RY * rr * Math.cos(phi);
+  o.x = lerp(ex, qx, s); o.y = lerp(ey, qy, s); o.z = lerp(p.z, 0.5 + 0.5 * Math.cos(phi), s);
+  return o;
+}
+const _a = { x: 0, y: 0, z: 0 }, _b = { x: 0, y: 0, z: 0 };
+function partPos(p, t, o) {             // returns x,y,z,q (q: 0 free .. 1 landed blend)
+  if (t >= p.T) { o.x = p.tx; o.y = p.ty; o.z = 0.5; o.q = 1; return o; }
+  if (t < p.dep) { preFlight(p, t, o); o.q = 0; return o; }
+  preFlight(p, p.dep, _a); preFlight(p, p.dep - 1 / 120, _b);
+  const vx = (_a.x - _b.x) * 120 * 0.85, vy = (_a.y - _b.y) * 120 * 0.85;
+  const u = (t - p.dep) / p.F, e = u + u * u - u * u * u;          // starts at orbit speed, eases into the cell
+  const x0 = _a.x, y0 = _a.y, x1 = x0 + vx * p.F / 3, y1 = y0 + vy * p.F / 3;
+  const x2 = p.tx + p.bx, y2 = p.ty + p.by, x3 = p.tx, y3 = p.ty;
+  const m = 1 - e;
+  o.x = m * m * m * x0 + 3 * m * m * e * x1 + 3 * m * e * e * x2 + e * e * e * x3;
+  o.y = m * m * m * y0 + 3 * m * m * e * y1 + 3 * m * e * e * y2 + e * e * e * y3;
+  o.z = lerp(_a.z, 0.5, e); o.q = sm((u - 0.3) / 0.7);
+  return o;
 }
 
-/* ---------------- 粒子：炸开 → 漩涡光带 → 写字 ---------------- */
-const T_BURST = 4.05;
-function buildParticles() {
-  const rnd = mulberry32(20261026);
-  const NC = CELLS.length;
-  const N = Math.max(3000, NC);
-  const P = {
-    N, x0: new Float32Array(N), y0: new Float32Array(N), vx: new Float32Array(N), vy: new Float32Array(N), del: new Float32Array(N),
-    d: new Float32Array(N), s0: new Float32Array(N), col: new Uint8Array(N), tx: new Float32Array(N), ty: new Float32Array(N),
-    arr: new Float32Array(N), dep: new Float32Array(N), arc: new Float32Array(N), hr: new Float32Array(N), hph: new Float32Array(N),
-    hw: new Float32Array(N), xo: new Float32Array(N), gd: new Float32Array(N), sw: new Float32Array(N), ax: new Float32Array(N)
-  };
-  const order = Array.from({ length: NC }, (_, i) => i);
-  for (let i = NC - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); const tmp = order[i]; order[i] = order[j]; order[j] = tmp; }
-  const Rpx = SUNR * 0.72 * SUNCELL;
-  for (let i = 0; i < N; i++) {
-    let a, rr, x0, y0;
-    do { a = rnd() * 6.2832; rr = Math.sqrt(rnd()) * Rpx; x0 = Math.round((960 + Math.cos(a) * rr) / 4) * 4; y0 = Math.round((SUNY + Math.sin(a) * rr) / 4) * 4; } while (y0 > HY1 - 6);
-    P.x0[i] = x0; P.y0[i] = y0;
-    const fr = clamp((y0 - (SUNY - Rpx)) / (2 * Rpx));
-    P.col[i] = rnd() < 0.22 ? 2 : (rnd() < 1 - fr ? 1 : 0); // 0 红 1 黄 2 米白
-    const d = 0.42 + 1.55 * Math.pow(rnd(), 1.15); P.d[i] = d;
-    P.s0[i] = clamp(Math.round(8.5 / d), 3, 20);
-    let dx = x0 - 960, dy = y0 - SUNY; const dl = Math.hypot(dx, dy) || 1;
-    const ja = (rnd() - .5) * 0.9 + Math.atan2(dy, dx) * (rr < 12 ? 0 : 1) + (rr < 12 ? rnd() * 6.28 : 0);
-    const sp = (380 + 1550 * Math.pow(rnd(), 1.4)) * Math.pow(1.1 / d, 0.55);
-    P.vx[i] = Math.cos(ja) * sp; P.vy[i] = Math.sin(ja) * sp * 0.78;
-    P.del[i] = 0.05 * rr / Rpx;
-    const ci = i < NC ? order[i] : Math.floor(rnd() * NC);
-    const cell = CELLS[ci];
-    P.tx[i] = TX0 + cell.c * TC + TC / 2; P.ty[i] = TY0 + cell.r * TC + TC / 2;
-    const g = Math.min(NG - 1, Math.floor(cell.c * NG / TW));
-    P.arr[i] = groupT(g);
-    const dur = Math.min(0.5 + 0.6 * rnd(), P.arr[i] - 4.46);
-    P.dep[i] = P.arr[i] - dur;
-    P.arc[i] = 60 + 150 * rnd();
-    P.hr[i] = 6 + 34 * Math.pow(rnd(), 1.3); P.hph[i] = rnd() * 6.2832; P.hw[i] = 6.5 + 4 * rnd();
-    P.xo[i] = 170 + 140 * rnd(); P.gd[i] = rnd() * 0.25; P.sw[i] = 0.3 + 0.45 * rnd(); P.ax[i] = (rnd() - .5) * 60;
-  }
-  PART = P;
+/* ---------- glow sprites ---------- */
+function glowSprite(col, size = 256) {
+  const c = mk(size, size), g = c.getContext('2d'), r = size / 2;
+  const gr = g.createRadialGradient(r, r, 0, r, r, r);
+  gr.addColorStop(0, rgba(col, 1)); gr.addColorStop(0.25, rgba(col, 0.55)); gr.addColorStop(0.55, rgba(col, 0.16)); gr.addColorStop(1, rgba(col, 0));
+  g.fillStyle = gr; g.fillRect(0, 0, size, size); return c;
 }
-const BANDV = 1300;
-const bandY = (x, t) => TCY + 262 + 34 * Math.sin(x * 0.0042 - t * 2.6);
-// 计算粒子 i 在 t 的位置；返回 0 表示不画
-const PO = { x: 0, y: 0, s: 0, a: 0, c: 0 };
-function ppos(i, t) {
-  const P = PART;
-  if (t >= P.arr[i]) return 0;
-  const tau = Math.max(0, t - T_BURST - P.del[i]);
-  const k = 2.35, fe = (1 - Math.exp(-k * tau)) / k;
-  let x = P.x0[i] + P.vx[i] * fe, y = P.y0[i] + P.vy[i] * fe + 40 * tau * tau;
-  let s = P.s0[i], d = P.d[i];
-  let a = d < 0.62 ? 0.5 : d > 1.45 ? 0.42 : clamp(1.2 - 0.45 * d, .45, 1);
-  let c = P.col[i];
-  const wg = eIOC(clamp((t - 4.4 - P.gd[i]) / 0.75));
-  if (wg > 0) {
-    const bxr = P.tx[i] - P.xo[i] + BANDV * (t - P.dep[i]);
-    const bx = 40 + 240 * Math.log(1 + Math.exp((bxr - 40) / 240));
-    const th = P.hph[i] + P.hw[i] * t;
-    const by = bandY(bx, t) + P.hr[i] * Math.cos(th);
-    const dep = Math.sin(th);
-    x = lerp(x, bx, wg); y = lerp(y, by, wg);
-    s = lerp(s, 5 + 2.2 * dep, wg); a = lerp(a, 0.72 + 0.28 * dep, wg);
-  }
-  const u = clamp((t - P.dep[i]) / (P.arr[i] - P.dep[i]));
-  if (u > 0) {
-    const e = eIOC(u);
-    x = lerp(x, P.tx[i], e) + P.ax[i] * Math.sin(Math.PI * e);
-    y = lerp(y, P.ty[i], e) - P.arc[i] * Math.sin(Math.PI * e);
-    s = lerp(s, TC, e); a = lerp(a, 1, e);
-    if (e > P.sw[i]) c = 2;
-  }
-  PO.x = x; PO.y = y; PO.s = s; PO.a = a; PO.c = c;
-  return 1;
-}
-function drawParticles(ctx, t) {
-  if (t < T_BURST || t >= 6.5) return;
-  const P = PART, cols = [RED, YEL, CRM], AL = [0.42, 0.7, 1];
-  const heads = [], trails = [];
-  for (let i = 0; i < 9; i++) { heads.push(new Path2D()); trails.push(new Path2D()); }
-  const tp = Math.max(T_BURST, t - 0.024);
-  for (let i = 0; i < P.N; i++) {
-    if (!ppos(i, t)) continue;
-    const x = PO.x, y = PO.y, s = Math.max(2, Math.round(PO.s)), a = PO.a, c = PO.c;
-    const b = a < 0.55 ? 0 : a < 0.85 ? 1 : 2;
-    const key = c * 3 + b;
-    const rx = Math.round(x - s / 2), ry = Math.round(y - s / 2);
-    if (rx < -40 || rx > W + 40 || ry < -40 || ry > H + 40) continue;
-    heads[key].rect(rx, ry, s, s);
-    ppos(i, tp);
-    const dx = x - PO.x, dy = y - PO.y, L = Math.hypot(dx, dy);
-    if (L > 2.5) {
-      const nx = -dy / L * s * 0.5, ny = dx / L * s * 0.5;
-      const p = trails[key];
-      p.moveTo(PO.x + nx * .6, PO.y + ny * .6); p.lineTo(x + nx, y + ny); p.lineTo(x - nx, y - ny); p.lineTo(PO.x - nx * .6, PO.y - ny * .6); p.closePath();
-    }
-  }
-  for (let key = 0; key < 9; key++) {
-    const c = cols[(key / 3) | 0], al = AL[key % 3];
-    ctx.fillStyle = css(c, al * 0.42); ctx.fill(trails[key]);
-    ctx.fillStyle = css(c, al); ctx.fill(heads[key]);
-  }
-  // 泛光源
-  gctx.setTransform(0.25, 0, 0, 0.25, 0, 0);
-  for (let key = 0; key < 9; key++) { gctx.fillStyle = css(cols[(key / 3) | 0], AL[key % 3] * 0.55); gctx.fill(heads[key]); }
+const GL_RED = glowSprite(REDc), GL_CRE = glowSprite(CREc), GL_YEL = glowSprite(YELc);
+function drawGlow(C, spr, x, y, r, a) {
+  if (a <= 0.002 || r <= 0) return;
+  C.globalCompositeOperation = 'lighter'; C.globalAlpha = clamp(a);
+  C.drawImage(spr, x - r, y - r, 2 * r, 2 * r);
+  C.globalCompositeOperation = 'source-over'; C.globalAlpha = 1;
 }
 
-/* ---------------- 主标题合成 ---------------- */
-function writtenGroups(t) { if (t < 5.0) return 0; return Math.min(NG, Math.floor((t - 5.0) / 0.0625 + 1e-6) + 1); }
-const groupColEnd = g => Math.ceil((g + 1) * TW / NG);
-function sinkOf(k, t) {
-  const T = HOPT[k]; if (k > 5 || t < T) return 0;
-  const tau = t - T;
-  if (tau < 0.05) return 6 * eOC(tau / 0.05);
-  const v = tau - 0.05; if (v > 0.8) return 0;
-  return 6 * Math.exp(-v * 8.5) * Math.cos(v * 21);
-}
-function extDepth(k, t) {
-  const s = 6.62 + 0.075 * k;
-  return { dark: t < s ? 0 : t < s + 0.05 ? 1 : 2, bright: t >= s + 0.16 };
-}
-function charGlow(k, t) {
-  let g = 0;
-  if (t >= 6.5) g = 0.10;
-  const p = 7.0 + 0.14 * k;
-  if (t >= p) {
-    const tau = t - p;
-    const on = 0.32 + 0.48 * sstep(7.0, 8.0, t);
-    if (tau < 0.035) g = 0.95; else if (tau < 0.07) g = 0.15; else if (tau < 0.1) g = 0.8; else if (tau < 0.13) g = 0.22; else g = on;
+/* ---------- film grain tiles & circular vignette (dithered) ---------- */
+const GRAIN = [];
+for (let n = 0; n < 6; n++) {
+  const c = mk(256, 256), g = c.getContext('2d'), id = g.createImageData(256, 256), rnd = mulberry(77 + n);
+  for (let i = 0; i < 256 * 256; i++) {
+    const v = rnd();
+    if (v < 0.5) { id.data[i * 4] = 236; id.data[i * 4 + 1] = 232; id.data[i * 4 + 2] = 225; id.data[i * 4 + 3] = Math.round((0.5 - v) * 2 * 255 * 0.04); }
+    else { id.data[i * 4 + 3] = Math.round((v - 0.5) * 2 * 255 * 0.055); }
   }
-  if (t >= 8.0) g = lerp(0.8, 0.5, sstep(8.0, 8.7, t)) + 0.55 * Math.exp(-(t - 8) / 0.12);
-  if (k <= 5 && t >= HOPT[k]) g += 0.6 * Math.exp(-(t - HOPT[k]) / 0.12);
-  if (t >= 13) g += 0.35 * Math.exp(-(t - 13) / 0.18);
-  return g;
+  g.putImageData(id, 0, 0); GRAIN.push(X.createPattern(c, 'repeat'));
 }
-function composeTitle(t) {
-  tlx.setTransform(1, 0, 0, 1, 0, 0); tlx.globalAlpha = 1; tlx.globalCompositeOperation = 'source-over';
-  tlx.clearRect(0, 0, LW, LH);
-  let clipped = false;
-  if (t < 6.5 + 1e-6) {
-    const gN = writtenGroups(t); if (gN === 0) return false;
-    if (gN < NG) { tlx.save(); tlx.beginPath(); tlx.rect(0, 0, LM + groupColEnd(gN - 1) * TC, LH); tlx.clip(); clipped = true; }
+const VIG = (() => {
+  const c = mk(W, H), g = c.getContext('2d'), id = g.createImageData(W, H), rnd = mulberry(99);
+  const R = Math.hypot(W / 2, H / 2);
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const d = Math.hypot(x - W / 2, y - H / 2) / R;
+    const a = Math.pow(sm((d - 0.42) / 0.58), 1.15) * 0.62;
+    const i = (y * W + x) * 4; id.data[i + 3] = clamp(a + (rnd() - 0.5) / 255) * 255;
   }
-  const sinks = CHARS.map((_, k) => Math.round(sinkOf(k, t)));
-  for (let k = 0; k < CHARS.length; k++) { const ch = CHARS[k], e = extDepth(k, t); if (e.dark) tlx.drawImage(ch.ext2, LM + ch.c0 * TC + e.dark * TC, LM + ch.r0 * TC + e.dark * TC + sinks[k]); }
-  for (let k = 0; k < CHARS.length; k++) { const ch = CHARS[k], e = extDepth(k, t); if (e.bright) tlx.drawImage(ch.ext1, LM + ch.c0 * TC + TC, LM + ch.r0 * TC + TC + sinks[k]); }
-  const ya = sstep(6.9, 7.8, t);
-  for (let k = 0; k < CHARS.length; k++) {
-    const ch = CHARS[k], x = LM + ch.c0 * TC, y = LM + ch.r0 * TC + sinks[k];
-    tlx.drawImage(ch.face, x, y);
-    if (k >= 4 && ya > 0) { tlx.globalAlpha = ya; tlx.drawImage(ch.yel, x, y); tlx.globalAlpha = 1; }
+  g.putImageData(id, 0, 0); return c;
+})();
+const SCAN = (() => { const c = mk(4, 4), g = c.getContext('2d'); g.fillStyle = 'rgba(0,0,0,1)'; g.fillRect(0, 0, 4, 1); return X.createPattern(c, 'repeat'); })();
+const SCAN3 = (() => { const c = mk(3, 3), g = c.getContext('2d'); g.fillStyle = 'rgba(0,0,0,1)'; g.fillRect(0, 0, 3, 1); return X.createPattern(c, 'repeat'); })();
+
+/* ---------- stars ---------- */
+const STARS = [];
+{ const rnd = mulberry(4242); for (let i = 0; i < 150; i++) STARS.push({ x: Math.floor(rnd() * W), y: Math.floor(rnd() * 760), s: rnd() < 0.7 ? 2 : (rnd() < 0.7 ? 3 : 4), a: 0.10 + 0.32 * rnd() * rnd(), f: 0.6 + 2.2 * rnd(), ph: rnd() * 6.283 }); }
+
+/* ==========================================================================
+   Timeline functions
+   ========================================================================== */
+function vel(t) {
+  const v36 = 2.2 + 9 * Math.exp(-(((3.6 - 0.12) / 0.2) ** 2)) + 13;
+  if (t < 3.6) return 2.2 + 9 * Math.exp(-(((t - 0.12) / 0.2) ** 2)) + 13 * eInC((t - 0.6) / 3.0);
+  if (t < 3.75) return v36 * (1 - sm((t - 3.6) / 0.15));
+  if (t < 4.0) return -17 * eInC((t - 3.75) / 0.25);        // grid streams back into the inhaling sun
+  if (t < 8.0) return 1.7 * sm((t - 4.05) / 0.9);
+  return lerp(1.7, 1.0, sm((t - 8) / 1.2));
+}
+const ZSTEP = 1 / 240, ZTAB = new Float64Array(Math.ceil(16.5 / ZSTEP) + 2);
+for (let i = 1; i < ZTAB.length; i++) ZTAB[i] = ZTAB[i - 1] + 0.5 * (vel((i - 1) * ZSTEP) + vel(i * ZSTEP)) * ZSTEP;
+function camZ(t) { const f = clamp(t, 0, 16.4) / ZSTEP, i = Math.floor(f); return lerp(ZTAB[i], ZTAB[i + 1], f - i); }
+
+function camera(t) {
+  let z = 1 + 0.006 * (t >= 6.5 ? eOutC((t - 6.5 + F1) / 0.28) : 0) + 0.006 * (t >= 7 ? eOutC((t - 7.0 + F1) / 0.28) : 0) + 0.006 * (t >= 7.5 ? eOutC((t - 7.5 + F1) / 0.28) : 0);
+  z *= 1 + 0.03 * eIOS((t - 8) / 7);
+  z *= 1 + 0.004 * (t >= 13.7 ? eOutC((t - 13.7 + F1) / 0.3) : 0);
+  const a = sm((t - 8) / 1.4) * (1 - sm((t - 14.9) / 0.1));
+  const tt = t - 8;
+  const rot = a * 0.0032 * Math.sin(tt * 0.9 + 0.3) - a * 0.001;
+  const shy = a * 0.0075 * Math.sin(tt * 0.62);        // slight yaw-like tilt (x-dependent vertical shift)
+  const shx = a * 0.006 * Math.sin(tt * 0.47 + 1.1);
+  let sx = 0, sy = 0;
+  if (t >= 8 && t < 8.4) {                              // glitch shake
+    const lt = t - 8, I = lt < 0.2 ? 1 : (lt >= 0.22 ? 0.55 : 0), f = Math.floor(lt * 60);
+    sx = (hash(f, 11) - 0.5) * 14 * I; sy = (hash(f, 12) - 0.5) * 8 * I;
   }
-  if (clipped) tlx.restore();
-  return true;
+  return { z, rot, shx, shy, sx, sy };
+}
+function applyCam(C, cam, withZoom = true) {
+  const px = 960, py = 450, z = withZoom ? cam.z : 1;
+  const c = Math.cos(cam.rot), s = Math.sin(cam.rot);
+  // M = T(p+shake) * R * Shear * S(z) * T(-p)
+  const a = c * z + (-s) * cam.shy * z, b = s * z + c * cam.shy * z;
+  const cc = c * cam.shx * z + (-s) * z, d = s * cam.shx * z + c * z;
+  const e = px + cam.sx - (a * px + cc * py), f = py + cam.sy - (b * px + d * py);
+  C.setTransform(a, b, cc, d, e, f);
+}
+function world(t) {
+  let hy, amp, bri, camH, f, roll = 0;
+  if (t < 4) {
+    hy = HY0; amp = 1; bri = 1;
+    camH = 0.55 + 0.07 * Math.sin(t * 2.3 + 0.4) * (1 - sm((t - 3.2) / 0.6));
+    f = 900 + 280 * (1 - eOutC(t / 0.6)) + 110 * eInC((t - 3.3) / 0.7);
+    roll = 0.011 * Math.sin(t * 1.5 + 0.2) * (1 - sm((t - 3.0) / 0.7));
+  } else {
+    const s1 = eIOC((t - 4) / 0.6), s2 = eIOS((t - 6.6) / 1.4);
+    hy = lerp(lerp(HY0, 955, s1), 712, s2);
+    amp = lerp(lerp(1, 0, s1), 0.92, s2);
+    bri = lerp(lerp(1, 0.3, s1), 0.40, s2);
+    camH = 0.55; f = lerp(lerp(1010, 900, s1), 900, s2);
+  }
+  const cam = camera(t);
+  const camX = 0.35 * sm((t - 8) / 1.4) * Math.sin((t - 8) * 0.62);
+  return { hy, amp, bri, camH, f, roll, camZ: camZ(t), camX, cam };
 }
 
-/* ---------------- 主角红色像素 ---------------- */
-function floatPos(t) { const u = t - T_BURST; return [960 + 16 * Math.sin(u * 1.25), FLOATY + 7 * Math.sin(u * 2.2)]; }
-function hopTarget(k) { if (k <= 5) return [CHARS[k].cx, CHARS[k].top]; return [PERIOD.cx, PERIOD.yb]; }
-// 返回 {bx, by(底边), w, h, glow}
-function hero(t) {
-  if (t < T_BURST) return null;
-  const S = 24;
-  if (t < 8.1) {
-    const u = eOC(clamp((t - T_BURST) / 0.8));
-    const f = floatPos(t);
-    const cx = lerp(960, f[0], u), cy = lerp(SUNY, f[1], u);
-    return { bx: cx, by: cy + S / 2, w: S, h: S, glow: 0.62 + 0.12 * Math.sin((t - 4) * 3.1) + 0.6 * Math.exp(-(t - T_BURST) / 0.25) };
+/* ---------- pen (the red pixel hero) ---------- */
+const P_REST = { x: TXR + 46, y: TYT - 14 };
+const HOV0 = { x: CH[0].cx, y: CH[0].top - 150 };
+const LAND = [9.0, 9.5, 10.0, 10.5, 11.0, 11.5];
+function titleShift(t) { return t < 13 ? 0 : TITLE_UP * eOutBack((t - 13 + F1) / 0.42, 1.1); }
+function press(t, k) {
+  if (k > 5) return 0;
+  const tau = t - LAND[k]; if (tau < 0) return 0;
+  if (tau < 0.045) return 6 * (0.5 + 0.5 * eOutC(tau / 0.045));
+  const u = tau - 0.045; return 6 * Math.exp(-u / 0.075) * Math.cos(u * 2 * Math.PI / 0.27);
+}
+function charDY(t, k) { return titleShift(t) + press(t, k); }
+function landPoint(t, k) {   // bottom-centre of block when standing on char k (k=6 -> period spot)
+  if (k === 6) return { x: PER.x + 14, y: PER.y + titleShift(t) };
+  return { x: CH[k].cx, y: CH[k].top + charDY(t, k) };
+}
+function squashContact(tau) {
+  if (tau < 0.06) return lerp(0.6, 1.07, eOutC(tau / 0.06));
+  if (tau < 0.1) return lerp(1.07, 0.84, sm((tau - 0.06) / 0.04));
+  return lerp(0.84, 1.24, eInQ((tau - 0.1) / 0.03));
+}
+function pen(t) {
+  const o = { x: 0, y: 0, s: 24, sx: 1, sy: 1, vis: t >= 4.045, glow: 0.55 };
+  if (t < 4.045) return o;
+  if (t < 4.4) {
+    o.x = SUNC.x; o.y = SUNC.y + 12 + 3 * Math.sin((t - 4.05) * 18) * Math.exp(-(t - 4.05) / 0.2);
+    o.s = 24 * (1 + 0.5 * Math.exp(-(t - 4.05) / 0.07)); o.glow = 0.55 + 0.6 * Math.exp(-(t - 4.05) / 0.15);
+    return o;
   }
-  const T0 = hopTarget(0);
-  const HPc = [T0[0], T0[1] - 230];
-  if (t < 8.5) {
-    const f = floatPos(8.1), u = eIOC((t - 8.1) / 0.4);
-    const cx = lerp(f[0], HPc[0], u), cy = lerp(f[1], HPc[1], u);
-    return { bx: cx, by: cy + S / 2, w: S, h: S, glow: 0.6 };
+  o.glow = 0.8;
+  if (t < 4.95) {
+    const u = eIOC((t - 4.4) / 0.55), m = 1 - u;
+    const p0x = SUNC.x, p0y = SUNC.y + 12, p2x = TXL + 45, p2y = TITLE_CY + 12;
+    const p1x = 520, p1y = 700;
+    o.x = m * m * p0x + 2 * m * u * p1x + u * u * p2x; o.y = m * m * p0y + 2 * m * u * p1y + u * u * p2y;
+    return o;
   }
+  if (t < 6.5) {
+    const u = (t - 4.95) / 1.55;
+    o.x = TXL + 45 + TW * eIOS(u);
+    o.y = TITLE_CY + 12 + 92 * Math.sin(u * Math.PI * 2 * 4.5) * (0.35 + 0.65 * Math.sin(Math.PI * clamp(u * 1.4)));
+    return o;
+  }
+  const endW = { x: TXL + 45 + TW, y: TITLE_CY + 12 };
+  if (t < 6.78) {
+    const u = eOutBack((t - 6.5) / 0.28, 1.4);
+    o.x = lerp(endW.x, P_REST.x, u); o.y = lerp(endW.y, P_REST.y, u); return o;
+  }
+  if (t < 8.5) { o.x = P_REST.x + 2 * Math.sin((t - 6.78) * 2.1); o.y = P_REST.y + 6 * Math.sin((t - 6.78) * 2 * Math.PI / 1.4); return o; }
+  if (t < 8.86) {
+    const r0 = { x: P_REST.x + 2 * Math.sin((8.5 - 6.78) * 2.1), y: P_REST.y + 6 * Math.sin((8.5 - 6.78) * 2 * Math.PI / 1.4) };
+    const u = eOutC((t - 8.5 + F1) / 0.36), m = 1 - u, cx = (r0.x + HOV0.x) / 2, cy = Math.min(r0.y, HOV0.y) - 170;
+    o.x = m * m * r0.x + 2 * m * u * cx + u * u * HOV0.x; o.y = m * m * r0.y + 2 * m * u * cy + u * u * HOV0.y;
+    o.s = lerp(24, 80, eOutC((t - 8.5 + F1) / 0.36));
+    const sp = Math.sin(Math.PI * clamp((t - 8.5) / 0.36));
+    o.sx = 1 + 0.18 * sp; o.sy = 1 / o.sx; o.glow = 0.5;
+    return o;
+  }
+  o.s = 80; o.glow = 0.45;
   if (t < 9.0) {
-    const sz = t < 8.75 ? lerp(S, 80, eOBack(clamp((t - 8.5) / 0.25), 2.2)) : 80;
-    let cy = HPc[1] - 16 * eOC(clamp((t - 8.55) / 0.2));
-    let sy = 1;
-    if (t >= 8.75) { const u = (t - 8.75) / 0.25; cy = lerp(HPc[1] - 16, T0[1] - 40, eIQ(u)); sy = 1 + 0.3 * u; }
-    const h = sz * sy, w = sz / sy;
-    return { bx: HPc[0], by: cy + sz / 2 + (h - sz) / 2, w, h, glow: 0.6 };
+    const u = (t - 8.86) / 0.14, lp = landPoint(t, 0);
+    o.x = HOV0.x; o.y = lerp(HOV0.y, lp.y, eInQ(u)); o.sy = 1 + 0.3 * eInQ(u); o.sx = Math.pow(o.sy, -0.8);
+    return o;
   }
-  if (t < 12.0) {
-    const k = Math.min(5, Math.floor((t - 9.0) / 0.5));
-    const tau = (t - HOPT[k]) / 0.5;
-    const A = hopTarget(k), B = hopTarget(k + 1);
-    const finalHop = k === 5;
-    let size = 80, sy, bx, by;
-    const contact = 0.16;
-    if (tau < contact) {
-      bx = A[0]; by = A[1] + Math.round(sinkOf(k, t));
-      if (tau < 0.1) sy = lerp(0.6, 0.74, eOC(tau / 0.1)); else sy = lerp(0.74, 1.3, eIQ((tau - 0.1) / 0.06));
-    } else {
-      const u = (tau - contact) / (1 - contact);
-      const apex = Math.min(A[1], B[1]) - (finalHop ? 120 : 150);
-      // 抛物线：过 A、B、顶点
-      const ya = A[1], yb = B[1];
-      // y(u) = ya + (yb-ya)u - 4*hh*u(1-u)，hh 让顶点约在 apex
-      const hh = Math.max(20, (Math.max(ya, yb) - apex) * 0.95);
-      by = ya + (yb - ya) * u - 4 * hh * u * (1 - u);
-      bx = lerp(A[0], B[0], u * 0.92 + 0.08 * eIOS(u));
-      const vy = (yb - ya) - 4 * hh * (1 - 2 * u);
-      const vmax = Math.max(Math.abs((yb - ya) - 4 * hh), Math.abs((yb - ya) + 4 * hh));
-      sy = 1 + 0.3 * Math.pow(Math.abs(vy) / vmax, 1.4);
-      if (finalHop) size = lerp(80, 24, eIOC(clamp((u - 0.25) / 0.75)));
-    }
-    const w = size * (sy < 1 ? lerp(1.5, 1, (sy - 0.6) / 0.4) : 1 / sy), h = size * sy;
-    return { bx, by, w, h, glow: 0.62 + 0.5 * Math.exp(-tau * 6) };
+  // hops: char k contact [L, L+0.13], flight to k+1 lands at L+0.5
+  let k = Math.min(6, Math.floor((t - 9.0) / 0.5 + 1e-9));
+  if (t >= 12.0) k = 6;
+  const L = k < 6 ? LAND[k] : 12.0, tau = t - L;
+  if (k === 6) {                                           // landed as the full stop
+    const lp = landPoint(t, 6), u = eOutC(tau / 0.24);
+    o.s = lerp(80, PSZ, u); o.x = lerp(lp.x, PER.x, u); o.y = lp.y;
+    o.sy = tau < 0.06 ? lerp(0.6, 1.08, eOutC(tau / 0.06)) : lerp(1.08, 1, eOutC((tau - 0.06) / 0.2)); o.sx = Math.pow(o.sy, -0.8);
+    o.glow = 0.5;
+    if (t >= 14 && t < 14.85) o.glow = 0.5 + 0.55 * Math.sin(Math.PI * clamp((t - 14) / 0.75)) ** 2;
+    return o;
   }
-  // 句点
-  const tau = t - 12.0;
-  const sy = 1 - 0.42 * Math.exp(-tau * 11) * Math.cos(tau * 30);
-  const w = 24 * (sy < 1 ? lerp(1.5, 1, clamp((sy - 0.58) / 0.42)) : 1 / sy), h = 24 * sy;
-  let glow = 0.5 + 0.9 * Math.exp(-tau / 0.2);
-  if (t >= 14 && t < 14.75) glow = 0.5 + 0.75 * Math.pow(Math.sin(Math.PI * (t - 14) / 0.75), 2);
-  else if (t >= 14.75) glow = lerp(0.5, 0.32, sstep(14.75, 15, t));
-  return { bx: PERIOD.cx, by: PERIOD.yb, w, h, glow };
+  if (tau < 0.13) {
+    const lp = landPoint(t, k); o.x = lp.x; o.y = lp.y; o.sy = squashContact(tau); o.sx = Math.pow(o.sy, -0.8); return o;
+  }
+  const t0 = L + 0.13, t1 = L + 0.5, u = (t - t0) / (t1 - t0);
+  const a = landPoint(t0, k), b = landPoint(t1, k + 1);
+  const hgt = k + 1 === 6 ? 70 : 125;
+  const apexBase = Math.min(a.y, b.y);
+  // parabola through a (u=0) and b (u=1) with apex hgt above the higher end
+  const A = a.y, B = b.y, Hh = apexBase - hgt;
+  // y(u)=A+(B-A)u - c*u(1-u)  choose c so min ~= Hh
+  const c = 4 * ((A + B) / 2 - Hh);
+  o.x = lerp(a.x, b.x, u); o.y = A + (B - A) * u - c * u * (1 - u);
+  const vy = (B - A) - c * (1 - 2 * u), vmax = Math.abs(B - A) / 2 + c;
+  const f = clamp(Math.abs(vy) / vmax);
+  o.sy = 1 + 0.3 * Math.pow(f, 1.3); o.sx = Math.pow(o.sy, -0.8);
+  return o;
 }
-function drawHeroBlock(ctx, hb, alpha = 1) {
-  const w = Math.max(1, Math.round(hb.w)), h = Math.max(1, Math.round(hb.h));
-  const x = Math.round(hb.bx - w / 2), y = Math.round(hb.by - h);
-  const cx = x + w / 2, cy = y + h / 2;
-  const R = Math.max(w, h) * 0.5 + Math.min(w, h) * 0.55;
-  const gr = ctx.createRadialGradient(cx, cy, Math.min(w, h) * 0.3, cx, cy, R);
-  gr.addColorStop(0, css(RED, 0.42 * hb.glow * alpha)); gr.addColorStop(0.55, css(RED, 0.16 * hb.glow * alpha)); gr.addColorStop(1, css(RED, 0));
-  ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.fillStyle = gr; ctx.fillRect(cx - R, cy - R, 2 * R, 2 * R); ctx.restore();
-  ctx.fillStyle = css(RED, alpha); ctx.fillRect(x, y, w, h);
-  // 像素高光：左上一格亮边
-  const px = Math.max(3, Math.round(Math.min(w, h) / 8));
-  ctx.fillStyle = css(mixc(RED, CRM, 0.45), alpha * 0.9);
-  ctx.fillRect(x, y, w, px); ctx.fillRect(x, y, px, h);
-  ctx.fillStyle = css(DRED, alpha * 0.9);
-  ctx.fillRect(x + px, y + h - px, w - px, px); ctx.fillRect(x + w - px, y + px, px, h - px);
+function penScreenPos(t) {   // where the full stop is on screen at time t (used after CRT)
+  const p = pen(t), cam = camera(t), px = 960, py = 450, z = cam.z, c = Math.cos(cam.rot), s = Math.sin(cam.rot);
+  const a = c * z + (-s) * cam.shy * z, b = s * z + c * cam.shy * z, cc = c * cam.shx * z + (-s) * z, d = s * cam.shx * z + c * z;
+  const e = px - (a * px + cc * py), f = py - (b * px + d * py);
+  const x = p.x, y = p.y - PSZ / 2;
+  return { x: a * x + cc * y + e, y: b * x + d * y + f };
 }
 
-/* ---------------- 落点碎屑 ---------------- */
-function drawDebris(ctx, t) {
-  const cols = [RED, CRM, YEL];
-  for (let k = 0; k < 7; k++) {
-    const T = HOPT[k], tau = t - T;
-    if (tau < 0 || tau > 0.75) continue;
-    const L = hopTarget(k);
-    const n = k === 6 ? 6 : 8;
-    for (let j = 0; j < n; j++) {
-      const r1 = hash2(k * 31 + j, 7), r2 = hash2(k * 31 + j, 19), r3 = hash2(k * 31 + j, 23);
-      const side = j % 2 ? 1 : -1;
-      const life = 0.45 + 0.28 * r3;
-      if (tau > life) continue;
-      const vx = side * (110 + 330 * r1) * (k === 6 ? 0.6 : 1), vy = -(260 + 430 * r2) * (k === 6 ? 0.6 : 1);
-      const x = L[0] + side * (k === 6 ? 14 : 44) + vx * tau, y = L[1] - 4 + vy * tau + 0.5 * 2300 * tau * tau;
-      const sz = j % 3 === 0 ? 9 : 6;
-      const a = tau < life * 0.6 ? 1 : (tau < life * 0.8 ? 0.6 : 0.3);
-      ctx.fillStyle = css(cols[j % 3], a);
-      ctx.fillRect(Math.round(x / 3) * 3, Math.round(y / 3) * 3, sz, sz);
+/* ==========================================================================
+   Drawing
+   ========================================================================== */
+const ROWX = [new Float32Array(80), new Float32Array(80)], ROWY = [new Float32Array(80), new Float32Array(80)];
+const TZN = 62, TX0 = -38, TNX = 77;
+function drawTerrain(C, P) {
+  if (P.bri <= 0.004) return;
+  const { hy, amp, bri, camH, f, camX } = P, cz = P.camZ;
+  const z0 = Math.floor(cz) + 1;
+  let have = false, cur = 0;
+  for (let k = TZN; k >= 0; k--) {
+    const zw = z0 + k, zr = zw - cz; if (zr < 0.3) break;
+    const rx = ROWX[cur], ry = ROWY[cur];
+    for (let i = 0; i < TNX; i++) {
+      const x = TX0 + i, y = amp > 0 ? amp * terrainH(x, zw) : 0;
+      rx[i] = 960 + f * (x - camX) / zr; ry[i] = hy + f * (camH - y) / zr;
     }
-  }
-}
-
-/* ---------------- 副标题：乱码解码 ---------------- */
-function drawSubtitle(ctx, t) {
-  if (t < 13.0) return;
-  for (const it of SUB.items) {
-    const appear = 13.0 + 0.012 * it.idx;
-    if (t < appear) continue;
-    const lock = SUBLOCK0 + SUBLOCKD * it.idx;
-    if (t >= lock) {
-      ctx.drawImage(it.sh, it.x + SC, it.y + SC);
-      ctx.drawImage(it.face, it.x, it.y);
-    } else {
-      const step = Math.floor((t - 13.0) / 0.05 + 1e-6);
-      const pi = Math.floor(hash2(it.idx * 7 + 3, step) * POOL.length);
-      const isRed = hash2(it.idx * 13 + 5, step) < 0.2;
-      const g = POOL[pi];
-      ctx.globalAlpha = 0.9;
-      ctx.drawImage(isRed ? g.red : g.face, it.slotX, SUB.y0);
-      ctx.globalAlpha = 1;
+    if (have) {
+      const px = ROWX[1 - cur], py = ROWY[1 - cur];
+      C.beginPath(); C.moveTo(px[0], py[0]);
+      for (let i = 1; i < TNX; i++) C.lineTo(px[i], py[i]);
+      for (let i = TNX - 1; i >= 0; i--) C.lineTo(rx[i], ry[i]);
+      C.closePath(); C.fillStyle = BG; C.fill();
+      const zf = zr + 1, fade = Math.pow(clamp(1 - zf / (TZN + 1)), 1.15);
+      C.strokeStyle = css(mix(BGc, REDc, fade * bri)); C.lineWidth = 0.9 + 1.7 * fade * fade;
+      C.beginPath(); C.moveTo(px[0], py[0]);
+      for (let i = 1; i < TNX; i++) C.lineTo(px[i], py[i]);
+      for (let i = 0; i < TNX; i++) { C.moveTo(px[i], py[i]); C.lineTo(rx[i], ry[i]); }
+      C.stroke();
     }
+    have = true; cur = 1 - cur;
+  }
+  if (have) {                                 // nearest row
+    const px = ROWX[1 - cur], py = ROWY[1 - cur];
+    C.strokeStyle = css(mix(BGc, REDc, bri)); C.lineWidth = 2.6;
+    C.beginPath(); C.moveTo(px[0], py[0]); for (let i = 1; i < TNX; i++) C.lineTo(px[i], py[i]); C.stroke();
   }
 }
-function subtitleGlow(t) {
-  if (t < 13.0 || t > 14.2) return;
-  for (const it of SUB.items) {
-    const lock = SUBLOCK0 + SUBLOCKD * it.idx;
-    if (t < lock) continue;
-    const a = 0.9 * Math.exp(-(t - lock) / 0.09);
-    if (a < 0.02) continue;
-    gctx.globalAlpha = a; gctx.drawImage(it.face, it.x, it.y);
-  }
-  gctx.globalAlpha = 1;
+function drawHorizon(C, P, t) {
+  const { hy, bri } = P;
+  C.globalCompositeOperation = 'lighter';
+  const g = C.createLinearGradient(0, hy - 150, 0, hy + 4);
+  g.addColorStop(0, rgba(REDc, 0)); g.addColorStop(0.7, rgba(REDc, 0.05 * bri)); g.addColorStop(1, rgba(REDc, 0.2 * bri));
+  C.fillStyle = g; C.fillRect(0, hy - 150, W, 154);
+  C.globalCompositeOperation = 'source-over';
+  C.fillStyle = css(mix(BGc, REDc, 0.75 * bri)); C.fillRect(0, Math.round(hy) - 1, W, 2);
 }
-
-/* ---------------- 标题组（标题 + 主角 + 碎屑 + 副标题）---------------- */
-let LASTHERO = null;
-function drawTitleGroup(ctx, t, gk) {
-  const M = groupMatrix(t);
-  const has = composeTitle(t);
-  const ox = TX0 - LM, oy = TY0 - LM;
-  ctx.save();
-  ctx.setTransform(M[0], M[1], M[2], M[3], M[4], M[5]);
-  ctx.imageSmoothingEnabled = true;
-  if (has) {
-    if (gk > 0) { // 故障：红 / 黄 / 米白 三层错开
-      const fr = Math.floor(t * 60 + 1e-6) >> 1;
-      const dx = Math.round(18 * gk * (0.65 + 0.35 * hash2(fr, 3)));
-      const dy = Math.round((hash2(fr, 4) - .5) * 6 * gk);
-      for (const [col, sx] of [[RED, -dx], [YEL, dx]]) {
-        tintx.globalCompositeOperation = 'source-over'; tintx.clearRect(0, 0, LW, LH); tintx.drawImage(tlC, 0, 0);
-        tintx.globalCompositeOperation = 'source-in'; tintx.fillStyle = css(col); tintx.fillRect(0, 0, LW, LH);
-        ctx.globalAlpha = 0.92; ctx.drawImage(tintC, ox + sx, oy + (sx < 0 ? dy : -dy));
+function drawHaze(C, P) {
+  const { hy, bri } = P;
+  C.globalCompositeOperation = 'lighter';
+  const g = C.createLinearGradient(0, hy - 46, 0, hy + 30);
+  g.addColorStop(0, rgba(REDc, 0)); g.addColorStop(0.62, rgba(REDc, 0.13 * bri)); g.addColorStop(1, rgba(REDc, 0));
+  C.fillStyle = g; C.fillRect(-100, hy - 46, W + 200, 76);
+  C.globalCompositeOperation = 'source-over';
+  const lg = C.createLinearGradient(0, 0, W, 0), lc = mix(BGc, REDc, 0.7 * bri);
+  lg.addColorStop(0, rgba(lc, 0)); lg.addColorStop(0.3, rgba(lc, 0.5)); lg.addColorStop(0.5, rgba(lc, 1)); lg.addColorStop(0.7, rgba(lc, 0.5)); lg.addColorStop(1, rgba(lc, 0));
+  C.fillStyle = lg; C.fillRect(-100, Math.round(hy) - 1, W + 200, 2);
+}
+function drawStars(C, t, P) {
+  C.fillStyle = css(CREc);
+  for (const s of STARS) {
+    if (s.y > P.hy - 8) continue;
+    const tw = 0.55 + 0.45 * Math.sin(t * s.f + s.ph);
+    C.globalAlpha = s.a * tw * (t < 4 ? 0.8 : 1);
+    C.fillRect(s.x, s.y, s.s, s.s);
+  }
+  C.globalAlpha = 1;
+}
+const SUNCV = mk(600, 600);
+function drawSun(C, t, P) {
+  const k = eIOC((t - 3.5) / 0.483), over = t >= 4.0;
+  const R = over ? P_R : sunR(t), cx = 960, cy = P.hy - 0.7 * R;
+  // soft bloom around the sun only
+  C.globalCompositeOperation = 'lighter';
+  const gr = C.createRadialGradient(cx, cy, R * 0.6, cx, cy, R * (over ? 2.0 : 1.8));
+  const gA = over ? 0.32 : 0.18 + 0.22 * k;
+  gr.addColorStop(0, rgba(over ? CREc : YELc, gA)); gr.addColorStop(0.35, rgba(REDc, gA * 0.45)); gr.addColorStop(1, rgba(REDc, 0));
+  C.fillStyle = gr; C.fillRect(cx - R * 2.5, cy - R * 2.5, R * 5, R * 5);
+  if (over || k > 0) {   // a tight halo hugging the disc: brightening, then the flash
+    const hA = over ? 0.5 : 0.3 * k;
+    const g2 = C.createRadialGradient(cx, cy, R * 0.92, cx, cy, R * 1.55);
+    g2.addColorStop(0, rgba(over ? CREc : YELc, hA)); g2.addColorStop(0.4, rgba(YELc, hA * 0.35)); g2.addColorStop(1, rgba(REDc, 0));
+    C.fillStyle = g2; C.fillRect(cx - R * 1.6, cy - R * 1.6, R * 3.2, R * 3.2);
+  }
+  C.globalCompositeOperation = 'source-over';
+  const SC_ = SUNCV.getContext('2d'), ox = 960 - 300, oy = Math.round(cy) - 300;
+  SC_.setTransform(1, 0, 0, 1, -ox, -oy); SC_.clearRect(ox, oy, 600, 600);
+  const C0 = C; C = SC_;
+  const gut = over ? 1 : clamp((t - 3.55) / 0.4) * 0.75, hyI = Math.round(P.hy);
+  sunRows(R, P.hy, (r, q0, q1, y0, y1, cxx, cyy, cs) => {
+    let col = over ? [247, 243, 235] : mix(sunRowColor(r), [255, 236, 190], 0.32 * k);
+    C.fillStyle = css(col);
+    if (gut > 0.02) {
+      // individual cells with gutters -> the sun reads as pixels
+      const gw = gut;
+      for (let q = q0; q <= q1; q++) {
+        const x0 = Math.round(cxx - R + q * cs), x1 = Math.round(cxx - R + (q + 1) * cs);
+        C.fillRect(x0, y0, x1 - x0 - gw, Math.min(y1, hyI) - y0 - gw);
       }
-      ctx.globalAlpha = 1;
+    } else {
+      const x0 = Math.round(cxx - R + q0 * cs), x1 = Math.round(cxx - R + (q1 + 1) * cs);
+      C.fillRect(x0, y0, x1 - x0, Math.min(y1, hyI) - y0);
     }
-    ctx.drawImage(tlC, ox, oy);
-    // 12–13 s 光扫
-    if (t >= 12.0 && t < 13.0) {
-      const u = eIOS(clamp((t - 12.05) / 0.85));
-      const xb = lerp(-260, LW + 260, u);
-      swx.globalCompositeOperation = 'source-over'; swx.clearRect(0, 0, LW, LH); swx.drawImage(tlC, 0, 0);
-      swx.globalCompositeOperation = 'source-in';
-      const gr = swx.createLinearGradient(xb - 120, LH * 0.5 + 40, xb + 120, LH * 0.5 - 40);
-      gr.addColorStop(0, 'rgba(236,232,225,0)'); gr.addColorStop(0.42, 'rgba(245,232,200,0.55)'); gr.addColorStop(0.5, 'rgba(255,250,236,0.9)');
-      gr.addColorStop(0.58, 'rgba(245,232,200,0.55)'); gr.addColorStop(1, 'rgba(236,232,225,0)');
-      swx.fillStyle = gr; swx.fillRect(0, 0, LW, LH);
-      ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 0.85 * sstep(12.0, 12.15, t) * (1 - sstep(12.85, 13.0, t));
-      ctx.drawImage(sweepC, ox, oy);
-      ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1;
-    }
-  }
-  drawSubtitle(ctx, t);
-  drawDebris(ctx, t);
-  const hb = hero(t);
-  LASTHERO = hb;
-  if (hb && t < 15) drawHeroBlock(ctx, hb);
-  ctx.restore();
-
-  // ---- 泛光源 ----
-  gctx.setTransform(0.25 * M[0], 0.25 * M[1], 0.25 * M[2], 0.25 * M[3], 0.25 * M[4], 0.25 * M[5]);
-  if (has) {
-    if (t < 6.5 + 1e-6) { // 刚落定的批次闪一下
-      const gN = writtenGroups(t);
-      for (let g = Math.max(0, gN - 4); g < gN; g++) {
-        const a = Math.exp(-(t - groupT(g)) / 0.07) * (Math.abs((groupT(g) * 2) % 1) < 1e-6 ? 1.0 : 0.7);
-        if (a < 0.03) continue;
-        const c0 = g === 0 ? 0 : groupColEnd(g - 1), c1 = groupColEnd(g);
-        gctx.globalAlpha = a; gctx.drawImage(tlC, LM + c0 * TC, 0, (c1 - c0) * TC, LH, ox + LM + c0 * TC, oy, (c1 - c0) * TC, LH);
-      }
-      gctx.globalAlpha = 1;
-    }
-    for (let k = 0; k < CHARS.length; k++) {
-      const gI = charGlow(k, t); if (gI <= 0.01) continue;
-      const ch = CHARS[k];
-      gctx.globalAlpha = Math.min(1, gI);
-      const img = (k >= 4 && t >= 7.3) ? ch.yel : ch.face;
-      gctx.drawImage(img, TX0 + ch.c0 * TC, TY0 + ch.r0 * TC + Math.round(sinkOf(k, t)));
-    }
-    gctx.globalAlpha = 1;
-    if (t >= 12.0 && t < 13.0) { gctx.globalAlpha = 0.6; gctx.drawImage(sweepC, ox, oy); gctx.globalAlpha = 1; }
-  }
-  subtitleGlow(t);
+  });
+  C0.drawImage(SUNCV, ox, oy);
 }
-
-/* ---------------- 泛光合成 ---------------- */
-function glowBegin() { gctx.setTransform(1, 0, 0, 1, 0, 0); gctx.globalAlpha = 1; gctx.globalCompositeOperation = 'source-over'; gctx.clearRect(0, 0, 480, 270); }
-function glowEnd(ctx, a1, a2) {
-  bActx.setTransform(1, 0, 0, 1, 0, 0); bActx.clearRect(0, 0, 480, 270); bActx.filter = 'blur(2.5px)'; bActx.drawImage(glowC, 0, 0); bActx.filter = 'none';
-  bBctx.setTransform(1, 0, 0, 1, 0, 0); bBctx.clearRect(0, 0, 240, 135); bBctx.filter = 'blur(4px)'; bBctx.drawImage(glowC, 0, 0, 240, 135); bBctx.filter = 'none';
-  ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalCompositeOperation = 'lighter'; ctx.imageSmoothingEnabled = true;
-  ctx.globalAlpha = a1; ctx.drawImage(blurA, 0, 0, W, H);
-  ctx.globalAlpha = a2; ctx.drawImage(blurB, 0, 0, W, H);
-  ctx.restore();
-}
-
-/* ---------------- 故障 ---------------- */
-function glitchK(t) {
-  if (t < 8.0 || t >= 8.4) return 0;
-  if (t < 8.1833) return 1 - 0.25 * (t - 8.0) / 0.1833;
-  if (t < 8.2333) return 0;
-  return 0.55 - 0.15 * (t - 8.2333) / 0.1667;
-}
-
-/* ---------------- 整帧 ---------------- */
-function renderScene(t) {
-  const ctx = scx;
-  ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over'; ctx.filter = 'none';
-  ctx.fillStyle = BGCSS; ctx.fillRect(0, 0, W, H);
-  const cam = camState(t);
-  glowBegin();
-  drawStars(ctx, t, cam);
-  if (t < T_BURST) { drawSun(ctx, t); sunGlowSource(t); }
-  drawTerrain(ctx, t, cam);
-  const gk = glitchK(t);
-  if (t >= 5.0) drawTitleGroup(ctx, t, gk);
-  else if (t >= T_BURST) { // 只有主角
-    const M = groupMatrix(t); const hb = hero(t); LASTHERO = hb;
-    ctx.save(); ctx.setTransform(M[0], M[1], M[2], M[3], M[4], M[5]); if (hb) drawHeroBlock(ctx, hb); ctx.restore();
-  }
-  drawParticles(ctx, t);
-  glowEnd(ctx, t < T_BURST ? 0.75 : 0.85, t < T_BURST ? 0.55 : 0.5);
-}
-
-function drawGrainVignette(ctx, t, fr) {
-  ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0);
-  const ox = Math.floor(hash2(fr, 1) * 256), oy = Math.floor(hash2(fr, 2) * 256);
-  ctx.translate(-ox, -oy);
-  ctx.globalCompositeOperation = 'overlay'; ctx.globalAlpha = 0.36;
-  ctx.fillStyle = grainPats[fr % grainPats.length]; ctx.fillRect(0, 0, W + 256, H + 256);
-  ctx.restore();
-  ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalCompositeOperation = 'source-over'; ctx.drawImage(vignC, 0, 0); ctx.restore();
-}
-
-function drawScanlines(ctx, t, gk) {
-  if (t < 8.0) return;
-  const a = gk > 0 ? 0.30 + 0.25 * gk : 0.06 * sstep(8.0, 8.5, t) + (t < 8.5 ? 0.12 * (1 - sstep(8.4, 8.5, t)) : 0);
-  if (a <= 0.003) return;
-  ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0);
-  const off = ((t - 8) * 18) % 4;
-  ctx.translate(0, off); ctx.globalAlpha = a; ctx.fillStyle = scanPat; ctx.fillRect(0, -4, W, H + 8);
-  ctx.restore();
-}
-
-function crtPeriodScreen() {
-  const M = groupMatrix(15.0);
-  const p = mApply(M, PERIOD.cx, PERIOD.yb - 12);
-  return [p[0], p[1], 24 * M[3]];
-}
-
-function drawCRT(ctx, t, fr) {
-  ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
-  ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
-  const [pxs, pys, psz] = crtPeriodScreen();
-  const T1 = 15.15, T2 = 15.47;
-  if (t < T1) {
-    const u = (t - 15.0) / (T1 - 15.0);
-    const v = lerp(1, 0.0045, 0.1 + 0.9 * eIC(u));   // 第一帧就压扁一截：重拍上立刻有动作
-    const hx = 1 + 0.035 * eIC(u);
-    const dh = H * v;
-    const dy = pys - pys * v;
-    ctx.imageSmoothingEnabled = true;
-    ctx.drawImage(sceneC, (W - W * hx) / 2, dy, W * hx, dh);
-    // 压扁时越来越亮
-    ctx.globalCompositeOperation = 'lighter';
-    ctx.globalAlpha = Math.min(1, 0.45 * Math.exp(-u * 6) + 1.6 * eIC(u)); ctx.drawImage(sceneC, (W - W * hx) / 2, dy, W * hx, dh); ctx.globalAlpha = 1;
-    const cu = sstep(0.7, 1.0, u);
-    if (cu > 0) { ctx.fillStyle = css(CRM, 0.8 * cu); ctx.fillRect(0, dy, W, dh); }
-    const gh = 10 + 70 * u;
-    const gr = ctx.createLinearGradient(0, pys - gh, 0, pys + gh);
-    gr.addColorStop(0, 'rgba(236,232,225,0)'); gr.addColorStop(.5, css(CRM, 0.38 * sstep(0.55, 1, u))); gr.addColorStop(1, 'rgba(236,232,225,0)');
-    ctx.fillStyle = gr; ctx.fillRect(0, pys - gh, W, 2 * gh);
-    ctx.globalCompositeOperation = 'source-over';
-  } else if (t < T2) {
-    const u = eIOC((t - T1) / (T2 - T1));
-    const x0 = lerp(0, pxs, u), x1 = lerp(W, pxs, u);
-    const lh = lerp(5, 2, u);
-    ctx.globalCompositeOperation = 'lighter';
-    const gh = lerp(80, 26, u);
-    const gr = ctx.createLinearGradient(0, pys - gh, 0, pys + gh);
-    gr.addColorStop(0, 'rgba(236,232,225,0)'); gr.addColorStop(.5, css(CRM, lerp(0.42, 0.3, u))); gr.addColorStop(1, 'rgba(236,232,225,0)');
-    ctx.fillStyle = gr; ctx.fillRect(x0 - 30, pys - gh, x1 - x0 + 60, 2 * gh);
-    const lg = ctx.createLinearGradient(x0, 0, x1, 0);
-    lg.addColorStop(0, css(CRM, 0.0)); lg.addColorStop(0.08, css(CRM, 0.9)); lg.addColorStop(0.5, css([255, 252, 244], 1)); lg.addColorStop(0.92, css(CRM, 0.9)); lg.addColorStop(1, css(CRM, 0));
-    ctx.fillStyle = lg; ctx.fillRect(x0, Math.round(pys - lh / 2), Math.max(0, x1 - x0), Math.max(1, Math.round(lh)));
-    ctx.globalCompositeOperation = 'source-over';
-  }
-  // 句点：原位停留，闪一下后熄灭
-  if (t < 15.80) {
-    let alpha = 1, glow = 0.7, size = psz;
-    if (t >= 15.5 && t < 15.62) { const u = (t - 15.5) / 0.12; glow = 0.7 + 1.6 * Math.sin(Math.PI * u); }
-    if (t >= 15.62) { const u = clamp((t - 15.62) / 0.18); alpha = 1 - eIQ(u); glow = 0.6 * (1 - u); size = psz * (u > 0.5 ? 0.5 : 1); }
-    const hb = { bx: pxs, by: pys + size / 2, w: size, h: size, glow };
-    drawHeroBlock(ctx, hb, alpha);
-    if (t >= 15.5 && t < 15.62) { // 闪光核心
-      const u = Math.sin(Math.PI * (t - 15.5) / 0.12);
-      ctx.save(); ctx.globalCompositeOperation = 'lighter';
-      const g2 = ctx.createRadialGradient(pxs, pys, 2, pxs, pys, 46);
-      g2.addColorStop(0, css(CRM, 0.55 * u)); g2.addColorStop(1, css(CRM, 0));
-      ctx.fillStyle = g2; ctx.fillRect(pxs - 46, pys - 46, 92, 92); ctx.restore();
+function drawParticles(C, t) {
+  const groups = new Map();
+  const o = { x: 0, y: 0, z: 0, q: 0 }, op = { x: 0, y: 0, z: 0, q: 0 };
+  const born = t - 4.032;
+  for (const p of PART) {
+    if (t >= p.T) continue;
+    partPos(p, t, o); partPos(p, t - 1 / 60, op);
+    const z = o.z, q = o.q;
+    let size = 2.6 + 14.5 * Math.pow(z, 2.2);
+    let col = p.col, dark = (1 - z) * 0.55, alpha = z > 0.78 ? 0.62 : 1;
+    if (born < 0.12) { const b = born / 0.12; size = lerp(p.cs, size, sm(b)); col = mix([247, 243, 235], col, sm(b)); dark *= sm(b); alpha = lerp(1, alpha, sm(b)); }
+    col = mix(col, BGc, dark);
+    if (q > 0) { size = lerp(size, TC, q); col = mix(col, FACEc, q); alpha = lerp(alpha, 1, q); }
+    const cr = Math.round(col[0] / 12) * 12, cg = Math.round(col[1] / 12) * 12, cb = Math.round(col[2] / 12) * 12;
+    const ak = alpha < 0.8 ? 1 : 0;
+    const key = (cr << 17) ^ (cg << 9) ^ (cb << 1) ^ ak;
+    let gp = groups.get(key);
+    if (!gp) { gp = { c: [cr, cg, cb], a: alpha < 0.8 ? 0.62 : 1, head: new Path2D(), t1: new Path2D(), t2: new Path2D() }; groups.set(key, gp); }
+    const s = Math.max(2, Math.round(size)), hx = Math.round(o.x - s / 2), hy = Math.round(o.y - s / 2);
+    gp.head.rect(hx, hy, s, s);
+    const vx = o.x - op.x, vy = o.y - op.y, sp = Math.hypot(vx, vy);
+    if (sp > 2.5 && born > 0.02) {
+      const nx = -vy / sp * s / 2, ny = vx / sp * s / 2, cx = hx + s / 2, cy = hy + s / 2;
+      const l1 = Math.min(1.3, 34 / sp), l2 = Math.min(3.0, 80 / sp);
+      const ax = cx - vx * l1, ay = cy - vy * l1, bx = cx - vx * l2, by = cy - vy * l2;
+      gp.t1.moveTo(cx + nx, cy + ny); gp.t1.lineTo(cx - nx, cy - ny); gp.t1.lineTo(ax - nx * 0.8, ay - ny * 0.8); gp.t1.lineTo(ax + nx * 0.8, ay + ny * 0.8); gp.t1.closePath();
+      gp.t2.moveTo(ax + nx * 0.8, ay + ny * 0.8); gp.t2.lineTo(ax - nx * 0.8, ay - ny * 0.8); gp.t2.lineTo(bx - nx * 0.4, by - ny * 0.4); gp.t2.lineTo(bx + nx * 0.4, by + ny * 0.4); gp.t2.closePath();
     }
   }
+  for (const gp of groups.values()) {
+    C.fillStyle = css(gp.c);
+    C.globalAlpha = 0.16 * gp.a; C.fill(gp.t2);
+    C.globalAlpha = 0.42 * gp.a; C.fill(gp.t1);
+    C.globalAlpha = gp.a; C.fill(gp.head);
+  }
+  C.globalAlpha = 1;
 }
-
-function draw(t) {
-  init();
-  t = clamp(+t || 0, 0, 16);
-  const fr = Math.floor(t * FPS + 1e-6);
-  sctx.setTransform(1, 0, 0, 1, 0, 0); sctx.globalAlpha = 1; sctx.globalCompositeOperation = 'source-over'; sctx.filter = 'none';
-  if (t >= BLACK_T) { sctx.fillStyle = '#000'; sctx.fillRect(0, 0, W, H); return; }
-  if (t < 15.15) renderScene(t);   // 显像管收成横线后不再需要整幅画面
-  const gk = glitchK(t);
-  if (t >= 15.0) {
-    drawCRT(sctx, t, fr);
-    if (t < 15.47) drawGrainVignette(sctx, t, fr);
+function faceColor(t, k) {
+  let col = FACEc;
+  if (k >= 4) {
+    const aiT = t >= 7 ? sm((t - 7.0 + F1) / 0.07) : 0, fA = t >= 7 ? Math.exp(-(t - 7) / 0.13) : 0;
+    col = mix(mix(FACEc, YELc, aiT), [252, 228, 160], fA * 0.75 * aiT);
+  }
+  if (k <= 5 && t >= LAND[k]) { const fl = Math.exp(-(t - LAND[k]) / 0.11); col = mix(col, k >= 4 ? [252, 228, 160] : [246, 243, 237], fl * 0.9); }
+  return col;
+}
+function glowLevel(t, k) {
+  if (t < 7.5) return 0.0;
+  const on = 7.5 + 0.075 * k, tau = t - on;
+  let g = tau < 0 ? 0 : tau < 0.035 ? 0.85 : tau < 0.07 ? 0.15 : tau < 0.1 ? 0.7 : 1;
+  const L = t < 8 ? lerp(0.5, 1.0, sm((t - 7.55) / 0.45)) : 0.38 + 0.62 * Math.exp(-(t - 8) / 0.28);
+  return g * L;
+}
+function drawTitle(C, t, gl) {
+  // ---- writing phase: landed cells only ----
+  if (t < 6.62) {
+    let n = 0, lo = 0, hi = CELLS_BY_T.length;
+    while (lo < hi) { const mid = (lo + hi) >> 1; if (CELLS_BY_T[mid].T <= t) lo = mid + 1; else hi = mid; }
+    n = lo; if (!n) return;
+    const pa = new Path2D(), pf = new Path2D();
+    for (let i = 0; i < n; i++) { const c = CELLS_BY_T[i]; (t - c.T < 0.07 ? pf : pa).rect(c.x, c.y, TC, TC); }
+    const e1 = t >= 6.5 ? Math.round(TC * eOutBack((t - 6.5 + F1) / 0.1, 3)) : 0, e2 = t >= 6.583 ? Math.round(TC * eOutBack((t - 6.583 + F1) / 0.1, 3)) : 0;
+    if (e2 > 0) { C.save(); C.translate(e1 + e2, e1 + e2); C.fillStyle = css(DREDc); C.fill(pa); C.fill(pf); C.restore(); }
+    if (e1 > 0) { C.save(); C.translate(e1, e1); C.fillStyle = css(REDc); C.fill(pa); C.fill(pf); C.restore(); }
+    C.fillStyle = css(FACEc); C.fill(pa); C.fillStyle = 'rgb(247,244,238)'; C.fill(pf);
     return;
   }
-  if (gk > 0) {
-    const sf = fr >> 1;
-    const r = mulberry32(5000 + sf);
-    sctx.fillStyle = BGCSS; sctx.fillRect(0, 0, W, H);
-    const shx = Math.round((r() - .5) * 2 * 10 * gk), shy = Math.round((r() - .5) * 2 * 6 * gk);
-    const n = 6 + Math.floor(r() * 5);
-    const cuts = [0]; for (let i = 0; i < n - 1; i++) cuts.push(r()); cuts.push(1); cuts.sort((a, b) => a - b);
-    for (let i = 0; i < n; i++) {
-      const y0 = Math.round(cuts[i] * H), y1 = Math.round(cuts[i + 1] * H), hh = y1 - y0; if (hh <= 0) continue;
-      const dx = r() < 0.7 ? Math.round((r() * 2 - 1) * 150 * gk) : 0;
-      sctx.drawImage(sceneC, 0, y0, W, hh, dx + shx, y0 + shy, W, hh);
+  const e1 = Math.round(TC * eOutBack((t - 6.5 + F1) / 0.1, 3)), e2 = Math.round(TC * eOutBack((t - 6.583 + F1) / 0.1, 3));
+  const dys = []; for (let k = 0; k < 6; k++) dys.push(charDY(t, k));
+  // glow behind (additive, below crisp faces)
+  for (let k = 0; k < 6; k++) {
+    let g = glowLevel(t, k) * 0.75;
+    if (k <= 5 && t >= LAND[k]) g += 0.9 * Math.exp(-(t - LAND[k]) / 0.14);
+    if (t >= 7 && k >= 4) g += 0.8 * Math.exp(-(t - 7) / 0.16);
+    if (t >= 12 && t < 13.2) { const bx = lerp(TXL - 260, TXR + 260, eIOS((t - 12) / 1.0)); g += 0.55 * Math.exp(-(((CH[k].cx - bx) / 170) ** 2)); }
+    if (t >= 13.0 && t < 13.5) g += 0.3 * Math.exp(-(t - 13) / 0.12);
+    if (g > 0.003) {
+      C.globalCompositeOperation = 'lighter'; C.globalAlpha = clamp(g * 0.55);
+      C.drawImage(CH[k].glow.c, CH[k].glow.x, CH[k].glow.y + dys[k]);
+      C.globalCompositeOperation = 'source-over'; C.globalAlpha = 1;
     }
-    // 少量数字噪块
-    const nb = Math.round(4 + 5 * gk);
-    for (let i = 0; i < nb; i++) {
-      const c = [RED, YEL, CRM][Math.floor(r() * 3)];
-      sctx.fillStyle = css(c, 0.35 + 0.4 * r());
-      sctx.fillRect(Math.round(r() * W / 6) * 6, Math.round(r() * H / 6) * 6, Math.round((20 + r() * 220) / 6) * 6, 6 * (1 + Math.floor(r() * 2)));
-    }
-  } else {
-    sctx.drawImage(sceneC, 0, 0);
   }
-  drawScanlines(sctx, t, gk);
-  drawGrainVignette(sctx, t, fr);
+  const sweep = t >= 12 && t < 13.15;
+  const bx = sweep ? lerp(TXL - 260, TXR + 260, eIOS((t - 12) / 1.0)) : 0;
+  const sweepFill = (base, hiC, k) => {
+    if (!sweep || Math.abs(CH[k].cx - bx) > (CH[k].x1 - CH[k].x0) / 2 + 260) return css(base);
+    const g = C.createLinearGradient(bx - 170, TITLE_CY - 70, bx + 170, TITLE_CY + 70);   // slanted band
+    g.addColorStop(0, css(base)); g.addColorStop(0.4, css(mix(base, hiC, 0.55))); g.addColorStop(0.5, css(hiC));
+    g.addColorStop(0.6, css(mix(base, hiC, 0.55))); g.addColorStop(1, css(base));
+    return g;
+  };
+  for (let k = 0; k < 6; k++) {
+    C.save(); C.translate(e1 + e2, e1 + e2 + dys[k]); C.fillStyle = sweepFill(DREDc, REDc, k); C.fill(CH[k].path); C.restore();
+  }
+  for (let k = 0; k < 6; k++) {
+    C.save(); C.translate(e1, e1 + dys[k]); C.fillStyle = sweepFill(REDc, [255, 178, 160], k); C.fill(CH[k].path); C.restore();
+  }
+  if (gl > 0) {                                   // glitch: red / yellow / cream separation
+    const f = Math.floor((t - 8) * 30);
+    const d1 = Math.round((8 + 10 * hash(f, 31)) * gl), d2 = Math.round((6 + 12 * hash(f, 32)) * gl);
+    for (let k = 0; k < 6; k++) {
+      C.save(); C.translate(-d1, dys[k] + Math.round((hash(f, 33) - 0.5) * 6 * gl)); C.fillStyle = css(REDc); C.fill(CH[k].path); C.restore();
+      C.save(); C.translate(d2, dys[k] - Math.round((hash(f, 34) - 0.5) * 6 * gl)); C.fillStyle = css(YELc); C.fill(CH[k].path); C.restore();
+    }
+  }
+  for (let k = 0; k < 6; k++) {
+    const base = faceColor(t, k);
+    C.save(); C.translate(0, dys[k]);
+    C.fillStyle = sweepFill(base, k >= 4 ? [253, 234, 178] : [248, 240, 222], k);
+    C.fill(CH[k].path);
+    C.restore();
+  }
+}
+function drawBlock(C, x, bottom, s, sx, sy, lit) {
+  const w = Math.max(1, Math.round(s * sx)), h = Math.max(1, Math.round(s * sy));
+  const x0 = Math.round(x - w / 2), y0 = Math.round(bottom - h);
+  C.fillStyle = css(REDc); C.fillRect(x0, y0, w, h);
+  if (s >= 14) {
+    const u = Math.max(2, Math.round(s / 8));
+    C.fillStyle = css(DREDc); C.fillRect(x0, y0 + h - Math.round(u * sy), w, Math.round(u * sy)); C.fillRect(x0 + w - Math.round(u * sx), y0, Math.round(u * sx), h);
+    C.fillStyle = css(mix(REDc, CREc, 0.45 + 0.4 * lit)); C.fillRect(x0 + Math.round(u * sx), y0 + Math.round(u * sy), Math.round(2 * u * sx), Math.round(u * sy));
+    C.fillRect(x0 + Math.round(u * sx), y0 + Math.round(u * sy), Math.round(u * sx), Math.round(2 * u * sy));
+  }
+}
+function drawPenGlow(C, t) {     // glow goes BEHIND the title so it never washes the letters
+  const p = pen(t); if (!p.vis) return;
+  drawGlow(C, GL_RED, p.x, p.y - p.s * p.sy / 2, p.s * 0.95 * Math.max(p.sx, p.sy), p.glow);
+}
+function drawPen(C, t) {
+  const p = pen(t); if (!p.vis) return;
+  drawBlock(C, p.x, p.y, p.s, p.sx, p.sy, 0);
+}
+// splash debris on each landing
+const IMPACTS = [...LAND.map((L, k) => ({ t: L, k })), { t: 12.0, k: 6 }];
+function drawDebris(C, t) {
+  for (const im of IMPACTS) {
+    const tau = t - im.t; if (tau < 0 || tau > 0.6) continue;
+    const lp = landPoint(im.t, im.k);
+    for (let j = 0; j < 9; j++) {
+      const h1 = hash(j, im.k, 5), h2 = hash(j, im.k, 6), h3 = hash(j, im.k, 8);
+      const side = j % 2 ? 1 : -1;
+      const vx = side * (90 + 320 * h1), vy = -(220 + 380 * h2), g = 1500;
+      const x = lp.x + side * 30 + vx * tau, y = lp.y - 4 + vy * tau + 0.5 * g * tau * tau;
+      const life = 0.35 + 0.25 * h3; if (tau > life) continue;
+      const s = tau < life * 0.55 ? (h3 < 0.5 ? 8 : 6) : 4;
+      C.fillStyle = css(j % 3 === 0 ? CREc : (im.k >= 4 && im.k < 6 && j % 3 === 1 ? YELc : REDc));
+      C.fillRect(Math.round(x - s / 2), Math.round(y - s / 2), s, s);
+    }
+  }
+}
+function drawSubtitle(C, t) {
+  if (t < 13.0) return;
+  const lt = t - 13.0;
+  const appear = sm((lt + F1) / 0.04);
+  C.save(); C.translate(0, titleShift(t) - TITLE_UP);      // rides up together with the title, always tucked under it
+  // plate: darken grid behind the words
+  C.globalAlpha = appear; C.drawImage(SPLATE.c, SPLATE.x, SPLATE.y); C.globalAlpha = 1;
+  let glowA = 0;
+  if (t >= 13.55) glowA = 0.1;
+  if (t >= 13.7) glowA += 0.4 * Math.exp(-(t - 13.7) / 0.18);
+  if (glowA > 0) { C.globalCompositeOperation = 'lighter'; C.globalAlpha = glowA; C.drawImage(SGLOW.c, SGLOW.x, SGLOW.y); C.globalCompositeOperation = 'source-over'; C.globalAlpha = 1; }
+  const step = Math.floor(lt / 0.05);
+  SLOTS.forEach((s, k) => {
+    const lock = 13.1 + 0.044 * k;
+    if (t >= lock) {
+      const fl = Math.exp(-(t - lock) / 0.07);
+      let col = mix(CREc, [248, 246, 241], fl);
+      if (t >= 13.7) col = mix(col, [246, 243, 237], 0.6 * Math.exp(-(t - 13.7) / 0.15));
+      C.fillStyle = css(col); C.fill(s.path);
+    } else {
+      const h = hash(k, step, 3), red = hash(k, step, 4) < 0.18;
+      const g = POOL[Math.floor(h * POOL.length)];
+      C.save(); C.translate(s.x, SOY); C.globalAlpha = appear;
+      C.fillStyle = css(red ? REDc : mix(CREc, BGc, 0.28)); C.fill(g); C.restore(); C.globalAlpha = 1;
+    }
+  });
+  C.restore();
 }
 
-/* ---------------- 对外接口 & 播放 ---------------- */
-const overlay = document.getElementById('play');
-const audio = document.getElementById('music');
-window.renderFrame = function (t) { overlay.style.display = 'none'; draw(t); };
-window.__titleInfo = () => { init(); return { TW, TH, TX0, TY0, titleW: TW * TC, sub: { w: SUB.w, F: SUB.F, y0: SUB.y0 }, cells: CELLS.length, particles: PART.N, PERIOD, chars: CHARS.map(c => ({ ch: c.ch, cx: c.cx, top: c.top, bottom: c.bottom })) }; };
-let playing = false;
-function loop() {
-  if (!playing) return;
-  const t = audio.currentTime;
-  draw(t);
-  if (audio.ended || t >= 16) { playing = false; draw(16); overlay.style.display = ''; return; }
-  requestAnimationFrame(loop);
+/* ---------- post: glitch slices & CRT power-off ---------- */
+const BUF = mk(W, H), BX = BUF.getContext('2d');
+function glitchI(t) { const lt = t - 8; return lt < 0 ? 0 : lt < 0.2 ? 1 - 0.25 * (lt / 0.2) : lt < 0.22 ? 0 : lt < 0.4 ? 0.55 * (1 - 0.3 * (lt - 0.22) / 0.18) : 0; }
+function applyGlitch(t) {
+  const I = glitchI(t), lt = t - 8, f = Math.floor(lt * 30) + (lt >= 0.22 ? 50 : 0);
+  X.setTransform(1, 0, 0, 1, 0, 0); X.fillStyle = BG; X.fillRect(0, 0, W, H);
+  if (I <= 0) { X.drawImage(BUF, 0, 0); return; }
+  const n = 6 + Math.floor(hash(f, 1) * 5);
+  // two cuts always run through the title so the letters themselves tear apart
+  const cuts = [0, (330 + 70 * hash(f, 20)) / H, (430 + 80 * hash(f, 21)) / H];
+  for (let i = 3; i < n; i++) cuts.push(hash(f, 2, i)); cuts.push(1);
+  cuts.sort((a, b) => a - b);
+  for (let i = 0; i < cuts.length - 1; i++) {
+    const y0 = Math.round(cuts[i] * H), y1 = Math.round(cuts[i + 1] * H); if (y1 <= y0) continue;
+    const mid = (y0 + y1) / 2, inTitle = mid > 300 && mid < 560;
+    const sg = (hash(f, 4, i) < 0.5 ? -1 : 1) * (inTitle && i % 2 ? -1 : 1);
+    const dx = !inTitle && hash(f, 3, i) < 0.2 ? 0 : Math.round(sg * ((inTitle ? 40 : 20) + 140 * hash(f, 13, i)) * I);
+    X.drawImage(BUF, 0, y0, W, y1 - y0, dx, y0, W, y1 - y0);
+  }
+  // a few palette data-blocks
+  for (let i = 0; i < Math.round(5 * I); i++) {
+    const y = Math.round(hash(f, 5, i) * H / 8) * 8, x = Math.round(hash(f, 6, i) * W / 8) * 8, w = 8 * (6 + Math.floor(hash(f, 7, i) * 40)), h = 8 * (1 + Math.floor(hash(f, 8, i) * 2));
+    const cc = [REDc, YELc, CREc][Math.floor(hash(f, 9, i) * 3)];
+    X.globalAlpha = 0.18 + 0.25 * hash(f, 10, i); X.fillStyle = css(cc); X.fillRect(x, y, w, h);
+  }
+  X.globalAlpha = 0.32 * I; X.fillStyle = SCAN3; X.fillRect(0, 0, W, H); X.globalAlpha = 1;
 }
-document.getElementById('playBtn').addEventListener('click', () => {
-  overlay.style.display = 'none';
-  audio.currentTime = 0;
-  const p = audio.play();
-  playing = true;
-  if (p && p.catch) p.catch(() => { /* 没有音频也能看画面 */ const t0 = performance.now(); audio.__fake = true; (function fl() { const t = (performance.now() - t0) / 1000; draw(t); if (t < 16) requestAnimationFrame(fl); else { draw(16); overlay.style.display = ''; } })(); playing = false; });
+function applyCRT(t) {
+  const a = t - 15 + F1;
+  X.setTransform(1, 0, 0, 1, 0, 0); X.fillStyle = '#000'; X.fillRect(0, 0, W, H);
+  if (a < 0.1) {
+    const u = eInQ(a / 0.1), sy = lerp(1, 0.004, u), h = Math.max(3, H * sy), y = 540 - h / 2;
+    X.globalCompositeOperation = 'screen';
+    const gg = X.createLinearGradient(0, 540 - 90, 0, 540 + 90);
+    gg.addColorStop(0, rgba(REDc, 0)); gg.addColorStop(0.5, rgba(REDc, 0.5 * u)); gg.addColorStop(1, rgba(REDc, 0));
+    X.fillStyle = gg; X.fillRect(0, 450, W, 180);
+    X.globalCompositeOperation = 'source-over';
+    X.drawImage(BUF, 0, y, W, h);
+    X.globalCompositeOperation = 'screen';                  // the picture burns brighter as it collapses
+    X.globalAlpha = clamp(u * 1.4); X.drawImage(BUF, 0, y, W, h);
+    X.globalAlpha = 1;
+    const cg = X.createLinearGradient(0, y, 0, y + h);
+    cg.addColorStop(0, 'rgba(246,242,234,0)'); cg.addColorStop(0.5, rgba([246, 242, 234], 0.9 * u)); cg.addColorStop(1, 'rgba(246,242,234,0)');
+    X.fillStyle = cg; X.fillRect(0, y, W, h);
+    X.globalCompositeOperation = 'source-over';
+  } else if (a < 0.28) {
+    const u = eInC((a - 0.1) / 0.18), w = Math.max(6, W * (1 - u)), th = lerp(4, 3, u);
+    const gg = X.createLinearGradient(0, 540 - 50, 0, 540 + 50);
+    gg.addColorStop(0, rgba(REDc, 0)); gg.addColorStop(0.5, rgba(REDc, 0.4 * (1 - u * 0.5))); gg.addColorStop(1, rgba(REDc, 0));
+    X.fillStyle = gg; X.fillRect(960 - w / 2 - 40, 490, w + 80, 100);
+    X.fillStyle = 'rgb(246,242,234)'; X.fillRect(Math.round(960 - w / 2), Math.round(540 - th / 2), Math.round(w), Math.round(th));
+  } else if (a < 0.38) {
+    const u = (a - 0.28) / 0.1, s = Math.round(lerp(6, 0, eInQ(u)));
+    if (s > 0) { drawGlow(X, GL_RED, 960, 540, 40, 0.5 * (1 - u)); X.fillStyle = 'rgb(246,242,234)'; X.fillRect(960 - s / 2, 540 - s / 2, s, s); }
+  }
+  // phosphor afterglow of the collapsed line, fading out
+  if (a >= 0.26 && a < 0.72) {
+    const v = 1 - sm((a - 0.26) / 0.46), w = W * 0.5 * (0.35 + 0.65 * v);
+    const gg = X.createLinearGradient(960 - w, 0, 960 + w, 0);
+    gg.addColorStop(0, rgba(REDc, 0)); gg.addColorStop(0.5, rgba(REDc, 0.16 * v)); gg.addColorStop(1, rgba(REDc, 0));
+    X.fillStyle = gg; X.fillRect(960 - w, 539, 2 * w, 2);
+  }
+  // the full stop survives: slides to centre, flashes, then goes out
+  const p0 = penScreenPos(15.0), z = camera(15.0).z;
+  const u = eIOC((t - 15.1) / 0.4);
+  const x = lerp(p0.x, 960, u), y = lerp(p0.y, 540, u);
+  let s = PSZ * lerp(z, 1, u), ga = 0.5;
+  if (t >= 15.5) { const fl = Math.exp(-(t - 15.5) / 0.07); s *= 1 + 0.3 * fl; ga += 1.2 * fl; }
+  if (t >= 15.5 && t < 15.7) ga += 0.15 * Math.sin((t - 15.5) * 30) ** 2;
+  if (t >= 15.7) { const k = clamp((t - 15.7) / 0.05); s *= 1 - eInQ(k); ga *= 1 - k; ga += t < 15.72 ? 0.6 : 0; }
+  if (s >= 1) {
+    drawGlow(X, GL_RED, x, y, s * 1.6, ga);
+    if (t >= 15.5 && t < 15.62) drawGlow(X, GL_YEL, x, y, s * 1.4, 0.35 * Math.exp(-(t - 15.5) / 0.05));
+    drawBlock(X, x, y + s / 2, s, 1, 1, 0);
+  }
+}
+function grainVignette(C, t) {
+  C.setTransform(1, 0, 0, 1, 0, 0);
+  C.globalAlpha = 1; C.globalCompositeOperation = 'source-over';
+  const f = Math.round(t * FPS);
+  C.drawImage(VIG, 0, 0);
+  C.save(); C.translate(Math.floor(hash(f, 91) * 256), Math.floor(hash(f, 92) * 256));
+  C.fillStyle = GRAIN[Math.floor(hash(f, 93) * GRAIN.length)]; C.fillRect(-256, -256, W + 256, H + 256); C.restore();
+}
+
+/* ---------- master ---------- */
+function drawScene(C, t, post) {
+  C.setTransform(1, 0, 0, 1, 0, 0); C.globalAlpha = 1; C.globalCompositeOperation = 'source-over';
+  C.fillStyle = BG; C.fillRect(0, 0, W, H);
+  const P = world(t), cam = P.cam;
+  // ---- background world (follows the camera's sway, not its zoom) ----
+  if (t < 4) { C.translate(960, P.hy); C.rotate(P.roll); C.translate(-960, -P.hy); }
+  else applyCam(C, cam, false);
+  drawStars(C, t, P);
+  drawHorizon(C, P, t);
+  if (t < 4.045) drawSun(C, t, P);
+  drawTerrain(C, P);
+  drawHaze(C, P);
+  C.setTransform(1, 0, 0, 1, 0, 0);
+  // explosion bloom (local)
+  if (t >= 4.045 && t < 4.6) {
+    const e = Math.exp(-(t - 4.05) / 0.09);
+    drawGlow(C, GL_CRE, SUNC.x, SUNC.y, 200 + 300 * (t - 4.05), 0.5 * e);
+    drawGlow(C, GL_YEL, SUNC.x, SUNC.y, 330 + 300 * (t - 4.05), 0.22 * e);
+  }
+  // ---- foreground in camera space ----
+  applyCam(C, cam, true);
+  if (t >= 6.4) {
+    const pa = 0.92 * sm((t - 6.4) / 1.4);
+    C.globalAlpha = pa; C.drawImage(TPLATE.c, TPLATE.x, TPLATE.y + titleShift(t)); C.globalAlpha = 1;
+  }
+  if (post !== 'crt') drawPenGlow(C, t);
+  if (t >= 4.95) drawTitle(C, t, post === 'glitch' ? glitchI(t) : 0);
+  if (t >= 4.045 && t < 6.6) drawParticles(C, t);
+  drawSubtitle(C, t);
+  drawDebris(C, t);
+  if (post !== 'crt') drawPen(C, t);
+  C.setTransform(1, 0, 0, 1, 0, 0);
+  // slow drifting scanlines over the title section
+  if (t >= 8) {
+    const a = 0.06 * sm((t - 8) / 0.4);
+    C.save(); C.translate(0, Math.floor(t * 9) % 4); C.globalAlpha = a; C.fillStyle = SCAN; C.fillRect(0, -4, W, H + 8); C.restore();
+    const by = ((t - 8) * 120) % (H + 400) - 200;
+    const g = C.createLinearGradient(0, by - 140, 0, by + 140);
+    g.addColorStop(0, rgba(CREc, 0)); g.addColorStop(0.5, rgba(CREc, 0.022)); g.addColorStop(1, rgba(CREc, 0));
+    C.globalCompositeOperation = 'lighter'; C.fillStyle = g; C.fillRect(0, by - 140, W, 280); C.globalCompositeOperation = 'source-over';
+    C.globalAlpha = 1;
+  }
+}
+
+let overlayHidden = false;
+function hideOverlay() { if (!overlayHidden) { const o = document.getElementById('play'); if (o) o.style.display = 'none'; overlayHidden = true; } }
+function draw(t) {
+  t = clamp(+t || 0, 0, 16);
+  X.setTransform(1, 0, 0, 1, 0, 0); X.globalAlpha = 1; X.globalCompositeOperation = 'source-over';
+  if (t >= 15.75) { X.fillStyle = '#000'; X.fillRect(0, 0, W, H); return; }
+  const post = (t >= 8 && t < 8.4) ? 'glitch' : (t >= 15.0 ? 'crt' : null);
+  if (post === 'crt') { drawScene(BX, t, post); grainVignette(BX, t); applyCRT(t); return; }
+  if (post === 'glitch') { drawScene(BX, t, post); applyGlitch(t); grainVignette(X, t); return; }
+  drawScene(X, t, post); grainVignette(X, t);
+}
+window.renderFrame = function (t) { hideOverlay(); draw(t); };
+
+/* ---------- interactive playback ---------- */
+const au = document.getElementById('au');
+draw(0);
+document.getElementById('btn').addEventListener('click', () => {
+  hideOverlay();
+  au.currentTime = 0;
+  const p = au.play(); if (p && p.catch) p.catch(() => {});
+  const loop = () => { draw(au.currentTime); if (!au.ended && au.currentTime < 16) requestAnimationFrame(loop); else draw(16); };
   requestAnimationFrame(loop);
 });
-draw(0);
-})();
+console.log('particles', PART.length, 'title cells', TCELLS.length, 'title px', TXL, TXR, TW, TYT, TYB, 'sub', SOX, S_TOTALW, S_Y0, S_Y1);
 </script>
 </body>
 </html>
