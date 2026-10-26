@@ -1,0 +1,894 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>MG 技法图鉴</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@100..900&family=Noto+Sans+SC:wght@400;500;700;900&family=Silkscreen&display=swap">
+<style>
+/* Layout: a light-table field guide. Numbered specimen cards (numbers are reference codes you can quote), grouped in chapters; every stage is a dark preview monitor. */
+:root{
+  --bg:#eceef2; --paper:#f8f9fb; --ink:#141820; --muted:#596171; --line:#d3d8e0;
+  --accent:#e2364b; --accent-soft:#fbe3e6; --chip:#e4e8ee;
+  --f-display:"Archivo","Noto Sans SC",system-ui,sans-serif;
+  --f-zh:"Noto Sans SC","PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+  --f-px:"Silkscreen",ui-monospace,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0e1015; --paper:#161920; --ink:#e9eaee; --muted:#9aa2b0; --line:#2a2f3a;
+  --accent:#ff5468; --accent-soft:#3a1c22; --chip:#222630; color-scheme:dark }}
+:root[data-theme="dark"]{
+  --bg:#0e1015; --paper:#161920; --ink:#e9eaee; --muted:#9aa2b0; --line:#2a2f3a;
+  --accent:#ff5468; --accent-soft:#3a1c22; --chip:#222630; color-scheme:dark }
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--f-zh);font-size:15px;line-height:1.65;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:0 64px}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--bg)}
+.wrap{max-width:1280px;margin:0 auto}
+header.top{padding-block:40px 20px;display:grid;gap:14px}
+.kicker{font-family:var(--f-px);font-size:11px;letter-spacing:.14em;color:var(--accent)}
+h1{font-family:var(--f-zh);font-weight:900;font-size:clamp(34px,6vw,64px);line-height:1.05;margin:0;letter-spacing:-.01em;text-wrap:balance}
+h1 em{font-style:normal;color:var(--accent)}
+.lead{max-width:64ch;color:var(--muted);margin:0}
+.lead b{color:var(--ink)}
+.bar{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--bg);border-bottom:1px solid var(--line);
+  display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center;padding-block:10px}
+.chapters{display:flex;flex-wrap:wrap;gap:6px;flex:1 1 420px;min-width:0}
+.chapters a{font-size:13px;color:var(--muted);text-decoration:none;padding:3px 10px;border-radius:99px;background:var(--chip);white-space:nowrap}
+.chapters a:hover,.chapters a:focus-visible{color:var(--ink);outline:2px solid var(--accent);outline-offset:1px}
+.ctrls{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.seg button,.btn{font:inherit;font-size:13px;border:0;background:var(--paper);color:var(--ink);padding:5px 10px;cursor:pointer}
+.seg button+button{border-left:1px solid var(--line)}
+.seg button[aria-pressed="true"]{background:var(--ink);color:var(--paper)}
+.btn{border:1px solid var(--line);border-radius:8px}
+.btn[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:#fff}
+button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.ctrl-label{font-size:12px;color:var(--muted)}
+section.ch{padding-top:36px;scroll-margin-top:70px}
+.ch-head{display:grid;gap:4px;margin-bottom:14px}
+.ch-head h2{margin:0;font-size:24px;font-weight:900}
+.ch-head .ch-code{font-family:var(--f-px);font-size:12px;color:var(--accent);letter-spacing:.1em}
+.ch-head p{margin:0;color:var(--muted);font-size:14px;max-width:70ch}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,330px),1fr));gap:18px}
+.card{background:var(--paper);border:1px solid var(--line);border-radius:10px;overflow:hidden;display:flex;flex-direction:column;min-width:0}
+.card[hidden]{display:none!important}
+.stage{position:relative;aspect-ratio:16/9;max-width:100%;background:#121419;cursor:pointer;overflow:hidden}
+.stage canvas{display:block;width:100%;height:100%}
+.stage .paused{position:absolute;right:8px;top:6px;font-size:11px;color:#ECE8E1;background:rgba(226,54,75,.9);padding:1px 7px;border-radius:4px;pointer-events:none}
+.body{padding:12px 14px 14px;display:grid;gap:8px}
+.name{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 10px}
+.name .code{font-family:var(--f-px);font-size:15px;color:var(--accent);letter-spacing:.04em}
+.name h3{margin:0;font-size:18px;font-weight:900;line-height:1.3}
+.name .en{font-family:var(--f-display);font-weight:600;font-size:12px;color:var(--muted);letter-spacing:.02em}
+.reel{font-size:11px;color:var(--accent);background:var(--accent-soft);padding:1px 8px;border-radius:99px;white-space:nowrap}
+.say{margin:0;font-size:14px;color:var(--muted)}
+.say::before{content:"你会说  ";font-size:11px;letter-spacing:.06em;color:var(--accent);font-weight:700}
+.is{margin:0;font-size:14px}
+.knobs{display:flex;flex-wrap:wrap;gap:5px;align-items:center}
+.knobs span{font-size:12px;background:var(--chip);padding:1px 8px;border-radius:5px}
+.knobs .k-label{background:none;padding:0;color:var(--muted);font-size:11px;letter-spacing:.06em}
+.howto{margin-top:48px;display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:24px;border-top:2px solid var(--ink);padding-top:22px}
+.howto h2{margin:0 0 8px;font-size:24px;font-weight:900}
+.howto p{margin:0 0 10px;max-width:62ch}
+.formula{font-family:var(--f-zh);font-weight:900;font-size:20px;margin:6px 0 14px}
+.formula span{color:var(--accent)}
+.ex{list-style:none;margin:0;padding:0;display:grid;gap:8px}
+.ex li{border-left:3px solid var(--accent);padding:4px 0 4px 12px;background:var(--paper);border-radius:0 6px 6px 0}
+.ex li small{display:block;color:var(--muted);font-size:12px}
+@media (prefers-reduced-motion: reduce){html{scroll-behavior:auto}}
+</style>
+
+<style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style>
+</head>
+<body>
+<div class="wrap">
+<header class="top">
+  <div class="kicker">MOTION GRAPHICS FIELD GUIDE · 50 SPECIMENS</div>
+  <h1>MG 技法<em>图鉴</em></h1>
+  <p class="lead" id="lead">先看画面，再记名字。每张卡片名字前面有一个<b>编号</b>，以后你想要哪种效果，直接说编号就行，比如“开场用 {#particles}，结尾用 {#matchcut}”。<b>红色小标签</b>表示这个技法出现在一条用 Claude Opus 5.5 生成的 MG 展示片里。点一下动画可以单独暂停，看不清就用顶上的慢放。</p>
+</header>
+
+<nav class="bar" aria-label="章节与播放控制">
+  <div class="chapters" id="chapters"></div>
+  <div class="ctrls">
+    <span class="ctrl-label">速度</span>
+    <div class="seg" role="group" aria-label="播放速度">
+      <button id="sp1" data-speed="1" aria-pressed="true">1×</button>
+      <button id="sp05" data-speed="0.5" aria-pressed="false">0.5×</button>
+      <button id="sp025" data-speed="0.25" aria-pressed="false">0.25×</button>
+    </div>
+    <button class="btn" id="pauseAll" aria-pressed="false">全部暂停</button>
+    <button class="btn" id="reelOnly" aria-pressed="false">只看展示片里的</button>
+  </div>
+</nav>
+
+<main id="main"></main>
+
+<section class="howto" id="howto">
+  <div>
+    <h2>以后怎么跟我描述画面</h2>
+    <p>你不用知道它是怎么做出来的。把“看起来像什么”换成“像几号”，再告诉我旋钮往哪边拧，最后说你要的感觉。</p>
+    <p class="formula">编号 + <span>旋钮</span> + 感觉</p>
+    <p>叫不出名字的时候，“像 {#metaball}，但是更慢、更黏”也是很好的描述。“像”本来就是导演最常用的词。</p>
+  </div>
+  <ul class="ex">
+    <li>“开场用 {#particles}，粒子聚得慢一点，散开的时候往上飘，别炸。”<small>{#particles} · 旋钮：聚合速度、散开方向 · 感觉：轻</small></li>
+    <li>“这个跳跃加 {#anticipation}，蓄力久一点，落地加 {#squash} 压扁。”<small>两个手感技法叠在一起用</small></li>
+    <li>“转场用 {#matchcut}，开头那颗球最后落成标题的句号。”<small>形变转场，首尾呼应</small></li>
+    <li>“镜头用 {#camera} 里的‘推’，不要变焦。”<small>推和变焦看起来像，空间感完全不同</small></li>
+    <li>“包装用 {#hud} 的界面装饰，配 {#device} 斜着放的屏幕，镜头慢慢绕。”<small>科技博主常用的“屏幕斜放 + 界面装饰”包装，就是这两张卡</small></li>
+  </ul>
+</section>
+</div>
+
+<script>
+(()=>{
+const W=480,H=270;
+const C={bg:'#121419',grid:'rgba(236,232,225,0.07)',ink:'#ECE8E1',dim:'rgba(236,232,225,0.45)',faint:'rgba(236,232,225,0.16)',red:'#FF4757',teal:'#4FD1C5',yel:'#F5C451'};
+const clamp=(x,a=0,b=1)=>Math.max(a,Math.min(b,x));
+const lerp=(a,b,t)=>a+(b-a)*t;
+const TAU=Math.PI*2;
+const E={
+  lin:x=>x,
+  inCubic:x=>x*x*x,
+  outCubic:x=>1-Math.pow(1-x,3),
+  inOutCubic:x=>x<.5?4*x*x*x:1-Math.pow(-2*x+2,3)/2,
+  inOutQuint:x=>x<.5?16*x*x*x*x*x:1-Math.pow(-2*x+2,5)/2,
+  outBack:x=>{const c1=1.70158,c3=c1+1;return 1+c3*Math.pow(x-1,3)+c1*Math.pow(x-1,2)},
+  outElastic:x=>x<=0?0:x>=1?1:Math.pow(2,-10*x)*Math.sin((x*10-0.75)*TAU/3)+1,
+};
+function rnd(i){const x=Math.sin(i*127.1+311.7)*43758.5453;return x-Math.floor(x)}
+function hash2(x,y){return rnd(x*57.13+y*131.71)}
+function noise2(x,y){const xi=Math.floor(x),yi=Math.floor(y),xf=x-xi,yf=y-yi;const u=xf*xf*(3-2*xf),v=yf*yf*(3-2*yf);
+  return lerp(lerp(hash2(xi,yi),hash2(xi+1,yi),u),lerp(hash2(xi,yi+1),hash2(xi+1,yi+1),u),v)}
+let SC=1; // device px per logical px, for shadowBlur
+function bg(c){c.fillStyle=C.bg;c.fillRect(0,0,W,H)}
+function gridBg(c,step=30){bg(c);c.strokeStyle=C.grid;c.lineWidth=1;c.beginPath();
+  for(let x=step;x<W;x+=step){c.moveTo(x+.5,0);c.lineTo(x+.5,H)}for(let y=step;y<H;y+=step){c.moveTo(0,y+.5);c.lineTo(W,y+.5)}c.stroke()}
+const FONT={zh:'"Noto Sans SC","PingFang SC","Microsoft YaHei",sans-serif',en:'"Archivo","Helvetica Neue",Arial,sans-serif',px:'"Silkscreen",ui-monospace,monospace'};
+function txt(c,s,x,y,o={}){const {size=12,color=C.dim,align='left',font='zh',weight=400,base='alphabetic',alpha=1}=o;
+  c.font=`${weight} ${size}px ${FONT[font]}`;c.fillStyle=color;c.textAlign=align;c.textBaseline=base;
+  const a=c.globalAlpha;c.globalAlpha=a*alpha;c.fillText(s,x,y);c.globalAlpha=a}
+function dot(c,x,y,r,col){c.fillStyle=col;c.beginPath();c.arc(x,y,r,0,TAU);c.fill()}
+function rrect(c,x,y,w,h,r){c.beginPath();c.moveTo(x+r,y);c.arcTo(x+w,y,x+w,y+h,r);c.arcTo(x+w,y+h,x,y+h,r);c.arcTo(x,y+h,x,y,r);c.arcTo(x,y,x+w,y,r);c.closePath()}
+
+/* ---------------- demos ---------------- */
+const D={};
+
+/* 01 easing */
+D.easing=(c,t)=>{gridBg(c);
+  const rows=[['线性','LINEAR',E.lin,C.ink],['缓入缓出','EASE IN OUT',E.inOutCubic,C.red],['回弹','BACK',E.outBack,C.red],['弹性','ELASTIC',E.outElastic,C.red]];
+  const x0=170,x1=440,cyc=3.2,u=t%cyc;let p,fwd;
+  if(u<1.2){p=u/1.2;fwd=true}else if(u<1.6){p=1;fwd=true}else if(u<2.8){p=(u-1.6)/1.2;fwd=false}else{p=1;fwd=false}
+  rows.forEach(([zh,en,f,col],i)=>{const y=44+i*56;
+    txt(c,zh,20,y+2,{size:15,color:C.ink,weight:700});txt(c,en,20,y+18,{size:8,font:'px'});
+    c.strokeStyle=C.faint;c.lineWidth=1;c.beginPath();c.moveTo(x0,y+.5);c.lineTo(x1,y+.5);c.stroke();
+    for(let k=0;k<=12;k++){const x=lerp(x0,x1,f(k/12));c.fillStyle=C.faint;c.fillRect(x-.5,y-8,1,16)}
+    const v=fwd?f(p):1-f(p);dot(c,lerp(x0,x1,v),y,9,col)});
+  txt(c,'灰色竖线 = 每隔相同时间球在哪：越密越慢，越疏越快',W/2,H-10,{align:'center',size:11})};
+
+/* 02 squash & stretch */
+function bounceState(p){const h=4*p*(1-p),d=Math.min(p,1-p);let sx=1,sy=1;
+  if(d<0.07){const k=1-d/0.07;sy=1-0.42*k;sx=1+0.45*k}else{const sp=Math.abs(1-2*p);sy=1+0.34*sp*sp;sx=1/Math.sqrt(sy)}return{h,sx,sy}}
+D.squash=(c,t)=>{gridBg(c);const g=222,R=20,Hh=150,b=bounceState((t%1.1)/1.1);
+  c.strokeStyle=C.faint;c.beginPath();c.moveTo(40,g+.5);c.lineTo(440,g+.5);c.stroke();
+  [[150,false,'没有挤压拉伸'],[330,true,'有挤压拉伸']].forEach(([x,sq,lab])=>{
+    const sh=1-b.h*.6;c.fillStyle='rgba(0,0,0,.45)';c.beginPath();c.ellipse(x,g+4,R*1.2*sh,4*sh,0,0,TAU);c.fill();
+    const sx=sq?b.sx:1,sy=sq?b.sy:1,cy=g-b.h*Hh-R*sy;
+    c.save();c.translate(x,cy);c.scale(sx,sy);dot(c,0,0,R,sq?C.red:C.ink);c.restore();
+    txt(c,lab,x,g+30,{align:'center',size:12,color:sq?C.ink:C.dim})})};
+
+/* 03 anticipation */
+function jumpState(u,antic){let h=0,sx=1,sy=1,tag='';
+  if(!antic){if(u>=.55&&u<1.25){const q=(u-.55)/.7;h=4*q*(1-q)}return{h,sx,sy,tag}}
+  if(u<.2){}else if(u<.55){const k=E.outCubic((u-.2)/.35);sy=1-.36*k;sx=1+.26*k;tag='蓄力'}
+  else if(u<1.25){const q=(u-.55)/.7;h=4*q*(1-q);const s=Math.max(0,1-q*3);sy=1+.32*s;sx=1/Math.sqrt(sy)}
+  else if(u<1.5){const k=(u-1.25)/.25;sy=lerp(.7,1,E.outBack(k));sx=1/Math.sqrt(sy);tag='落地'}
+  return{h,sx,sy,tag}}
+D.anticipation=(c,t)=>{gridBg(c);const g=208,S=44,u=t%2.6;
+  c.strokeStyle=C.faint;c.beginPath();c.moveTo(40,g+.5);c.lineTo(440,g+.5);c.stroke();
+  [[150,false,'直接跳'],[330,true,'先蓄力，再跳']].forEach(([x,a,lab])=>{const s=jumpState(u,a);
+    const w=S*s.sx,h=S*s.sy,y=g-s.h*110-h;
+    c.fillStyle=a?C.red:C.ink;rrect(c,x-w/2,y,w,h,8);c.fill();
+    c.fillStyle=C.bg;c.beginPath();c.arc(x-w*.18,y+h*.35,3.2,0,TAU);c.arc(x+w*.18,y+h*.35,3.2,0,TAU);c.fill();
+    txt(c,lab,x,g+30,{align:'center',size:12,color:a?C.ink:C.dim});
+    if(s.tag)txt(c,s.tag,x+w/2+8,y+12,{size:11,color:C.yel})})};
+
+/* 04 follow-through (verlet rope) */
+D.follow=(c,t,dt,s)=>{gridBg(c);const N=12,L=11;
+  const ax=()=>{const u=t%3.2;if(u<.8)return lerp(130,350,E.inOutCubic(u/.8));if(u<1.6)return 350;if(u<2.4)return lerp(350,130,E.inOutCubic((u-1.6)/.8));return 130};
+  if(!s.p){s.p=[];for(let i=0;i<N;i++)s.p.push({x:ax(),y:60+i*L,px:ax(),py:60+i*L});for(let k=0;k<200;k++)step(1/120)}
+  function step(h){const a=ax();for(let i=1;i<N;i++){const p=s.p[i];const vx=(p.x-p.px)*.992,vy=(p.y-p.py)*.992;p.px=p.x;p.py=p.y;p.x+=vx;p.y+=vy+900*h*h}
+    s.p[0].x=a;s.p[0].y=60;
+    for(let it=0;it<8;it++)for(let i=1;i<N;i++){const A=s.p[i-1],B=s.p[i];const dx=B.x-A.x,dy=B.y-A.y,d=Math.hypot(dx,dy)||1e-6,df=(d-L)/d;
+      if(i===1){B.x-=dx*df;B.y-=dy*df}else{A.x+=dx*df*.5;A.y+=dy*df*.5;B.x-=dx*df*.5;B.y-=dy*df*.5}}}
+  const n=Math.max(1,Math.ceil(dt/(1/240)));for(let k=0;k<n&&dt>0;k++)step(dt/n);
+  c.strokeStyle=C.faint;c.beginPath();c.moveTo(110,60.5);c.lineTo(370,60.5);c.stroke();
+  c.strokeStyle=C.ink;c.lineWidth=3;c.lineCap='round';c.beginPath();s.p.forEach((p,i)=>i?c.lineTo(p.x,p.y):c.moveTo(p.x,p.y));c.stroke();c.lineWidth=1;
+  c.fillStyle=C.ink;c.fillRect(s.p[0].x-9,51,18,18);const e=s.p[N-1];dot(c,e.x,e.y,11,C.red);
+  txt(c,'主体',s.p[0].x,44,{align:'center',size:11});
+  txt(c,'主体停了，后面的部分还要晃一会儿',W/2,H-12,{align:'center',size:11})};
+
+/* 05 stagger */
+D.stagger=(c,t)=>{gridBg(c);const cyc=3.6,mode=Math.floor(t/cyc)%3,u=t%cyc;const cols=12,rows=6,sz=22,gp=30,x0=W/2-cols*gp/2+4,y0=56;
+  const names=['从角落','从中心','随机'];
+  names.forEach((n,i)=>txt(c,(i===mode?'● ':'○ ')+n,20+i*78,30,{size:12,color:i===mode?C.ink:C.dim,weight:i===mode?700:400}));
+  for(let j=0;j<rows;j++)for(let i=0;i<cols;i++){let d;
+    if(mode===0)d=(i+j)/(cols+rows)*1.0;else if(mode===1)d=Math.hypot(i-(cols-1)/2,j-(rows-1)/2)/6.5*0.9;else d=rnd(i*31+j*7+1)*.9;
+    let k=E.outBack(clamp((u-d)/.45));if(u>2.3)k*=1-E.inCubic(clamp((u-2.3-d*.6)/.4));
+    if(k<=0.001)continue;const cx=x0+i*gp+sz/2,cy=y0+j*gp+sz/2,w=sz*k;
+    c.fillStyle=rnd(i*13+j*17)>.82?C.red:C.ink;c.fillRect(cx-w/2,cy-w/2,w,w)}
+  txt(c,'同一个入场动作，每个元素晚一点点出发',W/2,H-12,{align:'center',size:11})};
+
+/* 06 spring */
+D.spring=(c,t,dt,s)=>{gridBg(c);const tg=()=>{const k=Math.floor(t/1.3);return{x:70+rnd(k*2.13+1)*340,y:50+rnd(k*5.71+3)*170}};
+  if(!s.a){const p=tg();s.a={x:p.x,y:p.y,vx:0,vy:0,k:320,d:16};s.b={x:p.x,y:p.y,vx:0,vy:0,k:45,d:3.2}}
+  const T=tg();const n=Math.max(1,Math.ceil(dt/(1/240)));
+  for(const f of [s.a,s.b])for(let i=0;i<n&&dt>0;i++){const h=dt/n;f.vx+=((T.x-f.x)*f.k-f.vx*f.d)*h;f.vy+=((T.y-f.y)*f.k-f.vy*f.d)*h;f.x+=f.vx*h;f.y+=f.vy*h}
+  c.strokeStyle=C.dim;c.lineWidth=1;c.beginPath();c.moveTo(T.x-12,T.y);c.lineTo(T.x+12,T.y);c.moveTo(T.x,T.y-12);c.lineTo(T.x,T.y+12);c.stroke();
+  c.strokeStyle=C.faint;c.beginPath();c.moveTo(s.b.x,s.b.y);c.lineTo(T.x,T.y);c.stroke();
+  dot(c,s.a.x,s.a.y,10,C.ink);dot(c,s.b.x,s.b.y,10,C.red);
+  txt(c,'硬',s.a.x+14,s.a.y+4,{size:11,color:C.ink});txt(c,'软',s.b.x+14,s.b.y+4,{size:11,color:C.red});
+  txt(c,'十字 = 目标位置。硬弹簧紧跟，软弹簧追过头再荡回来',W/2,H-12,{align:'center',size:11})};
+
+/* 07 trail / motion blur */
+D.trail=(c,t)=>{bg(c);const P=(tau,cy)=>({x:240+190*Math.sin(2.1*tau),y:cy+38*Math.sin(3.3*tau)});const tau=t*1.5;
+  c.strokeStyle=C.faint;c.beginPath();c.moveTo(0,135.5);c.lineTo(W,135.5);c.stroke();
+  txt(c,'没有拖尾',14,22,{size:12});txt(c,'有拖尾 / 运动模糊',14,157,{size:12,color:C.ink});
+  let p=P(tau,72);dot(c,p.x,p.y,9,C.ink);
+  for(let k=26;k>=0;k--){const q=P(tau-k*.011,205);c.globalAlpha=Math.pow(1-k/27,1.6)*.9;dot(c,q.x,q.y,9*(1-k/40),C.red)}c.globalAlpha=1};
+
+/* 08 beat sync */
+D.beat=(c,t)=>{gridBg(c);const beat=Math.floor(t/.5),ph=(t%.5)/.5,bar=beat%4,strong=bar===0;
+  const r=38+(strong?42:20)*(1-E.outCubic(ph));
+  c.strokeStyle=strong?C.red:C.ink;c.globalAlpha=1-ph;c.lineWidth=2;c.beginPath();c.arc(240,118,38+ph*90,0,TAU);c.stroke();c.globalAlpha=1;c.lineWidth=1;
+  dot(c,240,118,r,strong?C.red:C.ink);
+  txt(c,'120 BPM · 4/4',20,28,{size:9,font:'px',color:C.dim});txt(c,'一拍 = 0.5 秒，第 1 拍是重拍',W-20,28,{size:11,align:'right'});
+  for(let i=0;i<4;i++){const x=240+(i-1.5)*52,on=i===bar;c.fillStyle=on?(i===0?C.red:C.ink):'rgba(236,232,225,.1)';rrect(c,x-20,214,40,32,6);c.fill();
+    txt(c,String(i+1),x,237,{size:15,align:'center',font:'en',weight:800,color:on?C.bg:C.dim})}};
+
+/* 09 trim path */
+const lem=(()=>{const pts=[];for(let i=0;i<=420;i++){const a=i/420*TAU;pts.push({x:240+165*Math.sin(a),y:132+62*Math.sin(2*a)})}
+  const cum=[0];for(let i=1;i<pts.length;i++)cum.push(cum[i-1]+Math.hypot(pts[i].x-pts[i-1].x,pts[i].y-pts[i-1].y));return{pts,cum,len:cum[cum.length-1]}})();
+function drawSub(c,P,a,b){if(b<=a)return;const A=a*P.len,B=b*P.len;c.beginPath();let started=false;
+  for(let i=0;i<P.pts.length;i++){const d=P.cum[i];if(d<A)continue;if(d>B){const j=i-1,f=(B-P.cum[j])/(P.cum[i]-P.cum[j]||1);c.lineTo(lerp(P.pts[j].x,P.pts[i].x,f),lerp(P.pts[j].y,P.pts[i].y,f));break}
+    if(!started){if(i>0){const j=i-1,f=(A-P.cum[j])/(P.cum[i]-P.cum[j]||1);c.moveTo(lerp(P.pts[j].x,P.pts[i].x,f),lerp(P.pts[j].y,P.pts[i].y,f));c.lineTo(P.pts[i].x,P.pts[i].y)}else c.moveTo(P.pts[i].x,P.pts[i].y);started=true}else c.lineTo(P.pts[i].x,P.pts[i].y)}c.stroke()}
+D.trim=(c,t)=>{gridBg(c);const u=(t%3.2)/3.2;
+  c.strokeStyle=C.faint;c.setLineDash([3,5]);drawSub(c,lem,0,1);c.setLineDash([]);
+  c.lineCap='round';
+  const e2=E.inOutCubic(clamp((u-.06)/.55)),s2=E.inOutCubic(clamp((u-.41)/.55));c.strokeStyle=C.ink;c.lineWidth=1.5;drawSub(c,lem,s2,e2);
+  const e=E.inOutCubic(clamp(u/.55)),s=E.inOutCubic(clamp((u-.35)/.55));c.strokeStyle=C.red;c.lineWidth=5;drawSub(c,lem,s,e);c.lineWidth=1;
+  txt(c,`终点 End ${Math.round(e*100)}%   起点 Start ${Math.round(s*100)}%`,W/2,H-12,{align:'center',size:11})};
+
+/* 10 morph */
+function rayPoly(verts,th){const dx=Math.cos(th),dy=Math.sin(th);let best=1e9;
+  for(let i=0;i<verts.length;i++){const A=verts[i],B=verts[(i+1)%verts.length];const ex=B.x-A.x,ey=B.y-A.y;const den=dx*ey-dy*ex;if(Math.abs(den)<1e-9)continue;
+    const r=(A.x*ey-A.y*ex)/den,s=(A.x*dy-A.y*dx)/den;if(r>0&&s>=-1e-6&&s<=1+1e-6)best=Math.min(best,r)}return best}
+const MN=180;
+const shapes=(()=>{const polar=(n,f)=>{const v=[];for(let k=0;k<n;k++){const a=-Math.PI/2+k*TAU/n;const r=f(k);v.push({x:Math.cos(a)*r,y:Math.sin(a)*r})}return v};
+  const sample=fn=>{const a=[];for(let i=0;i<MN;i++)a.push(fn(-Math.PI/2+i/MN*TAU));return a};
+  const star=polar(10,k=>k%2?36:88),sq=polar(4,()=>66*Math.SQRT2).map(p=>({x:p.x*Math.cos(Math.PI/4)-p.y*Math.sin(Math.PI/4),y:p.x*Math.sin(Math.PI/4)+p.y*Math.cos(Math.PI/4)})),tri=polar(3,()=>92);
+  return[['圆',sample(()=>74)],['星',sample(a=>rayPoly(star,a))],['方',sample(a=>rayPoly(sq,a))],['花',sample(a=>62+16*Math.cos(6*(a+Math.PI/2)))],['三角',sample(a=>rayPoly(tri,a))]]})();
+D.morph=(c,t)=>{gridBg(c);const per=1.15,n=shapes.length,k=Math.floor(t/per),u=(t%per)/per;const A=shapes[k%n],B=shapes[(k+1)%n];const m=E.inOutCubic(clamp(u/.55));
+  c.save();c.translate(240,124);c.rotate(m*0.25+k*0.25);c.fillStyle=C.red;c.beginPath();
+  for(let i=0;i<MN;i++){const a=-Math.PI/2+i/MN*TAU,r=lerp(A[1][i],B[1][i],m);const x=Math.cos(a)*r,y=Math.sin(a)*r;i?c.lineTo(x,y):c.moveTo(x,y)}c.closePath();c.fill();
+  c.fillStyle=C.ink;for(let i=0;i<MN;i+=15){const a=-Math.PI/2+i/MN*TAU,r=lerp(A[1][i],B[1][i],m);dot(c,Math.cos(a)*r,Math.sin(a)*r,2.2,C.ink)}c.restore();
+  txt(c,`${A[0]} → ${B[0]}`,W/2,H-30,{align:'center',size:15,color:C.ink,weight:700});
+  txt(c,'白点：两个形状上一一对应的点，从这边滑到那边',W/2,H-10,{align:'center',size:11})};
+
+/* 11 mask reveal */
+D.mask=(c,t)=>{gridBg(c);const u=t%3.6;
+  const yIn=(1-E.outCubic(clamp((u-.15)/.55)))*70,yOut=-E.inCubic(clamp((u-2.8)/.45))*70;
+  c.save();c.beginPath();c.rect(0,66,W,68);c.clip();txt(c,'REVEAL',240,130+yIn+yOut,{size:62,font:'en',weight:900,color:C.ink,align:'center'});c.restore();
+  c.strokeStyle='rgba(255,71,87,.5)';c.setLineDash([4,4]);c.beginPath();c.moveTo(60,134.5);c.lineTo(420,134.5);c.stroke();c.setLineDash([]);
+  txt(c,'遮罩边缘',424,138,{size:10,color:C.red});
+  const bx=lerp(50,430,E.inOutCubic(clamp((u-.7)/.9))),ex=lerp(50,430,E.inOutCubic(clamp((u-2.6)/.7)));
+  c.save();c.beginPath();c.rect(ex,150,bx-ex,50);c.clip();txt(c,'字从一条看不见的线后面出来',240,184,{size:22,weight:700,color:C.ink,align:'center'});c.restore();
+  if(u>.7&&u<3.3){c.fillStyle=C.red;const lead=u<1.8?bx:ex;c.fillRect(lead-2,152,4,44)}
+  txt(c,'上：竖着的遮罩　下：横着擦出',W/2,H-12,{align:'center',size:11})};
+
+/* 12 metaballs */
+D.metaball=(c,t,dt,s)=>{bg(c);const w=240,h=135;
+  if(!s.cv){s.cv=document.createElement('canvas');s.cv.width=w;s.cv.height=h;s.cx=s.cv.getContext('2d');s.img=s.cx.createImageData(w,h)}
+  const balls=[];for(let i=0;i<6;i++){balls.push({x:115+i*50+46*Math.sin(t*.8*(1+i*.17)+i),y:135+58*Math.sin(t*(.65+i*.13)+i*2.1),r:18+(i%3)*7})}
+  const d=s.img.data;let o=0;
+  for(let y=0;y<h;y++){const Y=(y+.5)*2;for(let x=0;x<w;x++){const X=(x+.5)*2;let f=0;for(const b of balls){const dx=X-b.x,dy=Y-b.y;f+=b.r*b.r/(dx*dx+dy*dy+1)}
+    const a=clamp((f-0.92)/0.16),hi=clamp((f-1.8)/2);d[o]=255;d[o+1]=71+hi*90;d[o+2]=87+hi*80;d[o+3]=a*255;o+=4}}
+  s.cx.putImageData(s.img,0,0);c.imageSmoothingEnabled=true;c.drawImage(s.cv,0,0,W,H);
+  txt(c,'每个球周围有一圈“浓度”，浓度加起来超过一条线，就画成实心',W/2,H-12,{align:'center',size:11})};
+
+/* 13 harmonograph */
+D.harmono=(c,t)=>{gridBg(c);const fr=[2.01,3.0,1.5];
+  for(let i=0;i<3;i++){const y=58+i*72;c.strokeStyle=i===1?C.red:C.dim;c.lineWidth=1.4;c.beginPath();
+    for(let x=0;x<=100;x+=2){const v=Math.sin(x*.06*fr[i]*1.6-t*2*(1+i*.3));x?c.lineTo(18+x,y+v*16):c.moveTo(18+x,y+v*16)}c.stroke();
+    txt(c,'波 '+(i+1),18,y-22,{size:10});if(i<2)txt(c,'+',68,y+44,{size:14,align:'center',color:C.dim})}
+  txt(c,'=',140,140,{size:18,align:'center',color:C.dim});c.lineWidth=1;
+  const N=1800,S=70,u=t%7,n=Math.floor(clamp(u/5)*N),ph=t*.25;let lx=0,ly=0;
+  c.strokeStyle='rgba(236,232,225,.55)';c.lineWidth=.8;c.beginPath();
+  for(let i=0;i<=n;i++){const s=i/N*S,dmp=Math.exp(-s*.022);
+    const x=310+(72*Math.sin(2.01*s+ph)+42*Math.sin(3*s+1.2))*dmp,y=135+(72*Math.sin(3*s+ph*.7+.5)+30*Math.sin(1.5*s))*dmp*0.95;i?c.lineTo(x,y):c.moveTo(x,y);lx=x;ly=y}
+  c.stroke();c.lineWidth=1;dot(c,lx,ly,4,C.red)};
+
+/* 14 procedural tree */
+D.tree=(c,t)=>{gridBg(c);const u=t%5.4,g=clamp(u/3.4),fade=1-clamp((u-4.6)/.6);c.globalAlpha=fade;
+  c.strokeStyle=C.faint;c.beginPath();c.moveTo(80,252.5);c.lineTo(400,252.5);c.stroke();c.lineCap='round';
+  const MAXD=8;
+  (function br(x,y,a,len,d,seed){const lp=clamp(g*(MAXD+1)-d);if(lp<=0)return;const sway=Math.sin(t*1.4+d*.6)*.012*d;a+=sway;
+    const x2=x+Math.cos(a)*len*lp,y2=y+Math.sin(a)*len*lp;c.strokeStyle=C.ink;c.lineWidth=Math.max(.6,6.5*Math.pow(.66,d));c.beginPath();c.moveTo(x,y);c.lineTo(x2,y2);c.stroke();
+    if(d===MAXD){if(lp>=1)dot(c,x2,y2,2.4,C.red);return}
+    if(lp<1)return;const sp=.32+rnd(seed)*.28,sk=(rnd(seed+7)-.5)*.2;
+    br(x2,y2,a-sp+sk,len*(.7+rnd(seed+3)*.1),d+1,seed*2+1);br(x2,y2,a+sp+sk,len*(.7+rnd(seed+5)*.1),d+1,seed*2+2)})(240,252,-Math.PI/2,56,0,1);
+  c.globalAlpha=1;txt(c,'一条规则：每根枝分成两根，短一点、歪一点',W/2,22,{align:'center',size:11})};
+
+/* 15 kinetic typography */
+function kinetic(c,t){gridBg(c);const word='MOTION',u=t%4.2;
+  const wt=Math.round(lerp(200,900,E.inOutCubic(clamp((u-1.0)/.7)))),track=lerp(46,6,E.inOutCubic(clamp((u-.2)/1.5)));
+  c.font=`${wt} 66px ${FONT.en}`;const ws=[...word].map(ch=>c.measureText(ch).width);const total=ws.reduce((a,b)=>a+b,0)+track*(word.length-1);
+  let x=240-total/2;
+  [...word].forEach((ch,i)=>{const k=clamp((u-.12-i*.09)/.5),out=clamp((u-3.4-i*.05)/.4);
+    const bs=(i%2?1:-1)*18*(1-E.inOutCubic(clamp((u-1.6)/.6)));
+    const y=150+(1-E.outBack(k))*50+bs-E.inCubic(out)*40;c.globalAlpha=clamp(k*3)*(1-out);
+    c.font=`${wt} 66px ${FONT.en}`;c.fillStyle=(ch==='O')?C.red:C.ink;c.textAlign='left';c.textBaseline='alphabetic';c.fillText(ch,x,y);x+=ws[i]+track});
+  c.globalAlpha=clamp((u-1.6)/.4)*(1-clamp((u-3.4)/.4));
+  const sub='KINETIC TYPOGRAPHY';c.font=`9px ${FONT.px}`;const sw=[...sub].reduce((a,ch)=>a+c.measureText(ch).width+3,0);let sx=240-sw/2;
+  c.fillStyle=C.dim;for(const ch of sub){c.fillText(ch,sx,182);sx+=c.measureText(ch).width+3}c.globalAlpha=1;
+  txt(c,`字重 ${wt}`,20,H-14,{size:10,font:'px'});txt(c,`字距 ${Math.round(track)}`,120,H-14,{size:10,font:'px'});txt(c,`基线 ±${Math.round(18*(1-E.inOutCubic(clamp((u-1.6)/.6))))}`,220,H-14,{size:10,font:'px'})}
+D.kinetic=kinetic;
+
+/* 16 scramble */
+D.scramble=(c,t)=>{gridBg(c);const u=t%4.4;const fade=1-clamp((u-3.7)/.5);c.globalAlpha=fade;
+  const lines=[{s:'带你拥抱未来',size:38,font:'zh',weight:900,y:122,pool:'未来拥抱带你娜乌斯嘉动效粒子光影代码时间宇宙蜉蝣',t0:.3,dt:.2},
+               {s:'EMBRACE THE FUTURE',size:19,font:'en',weight:800,y:172,pool:'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789#%&@$',t0:.5,dt:.07}];
+  for(const L of lines){c.font=`${L.weight} ${L.size}px ${FONT[L.font]}`;const chars=[...L.s];const ws=chars.map(ch=>c.measureText(ch).width);const tot=ws.reduce((a,b)=>a+b,0);let x=240-tot/2;
+    chars.forEach((ch,i)=>{const start=.1+i*.04,lock=L.t0+i*L.dt;let show=null,col=C.ink;
+      if(u<start){}else if(u<lock){if(ch!==' '){const pi=Math.floor(rnd(i*13.7+Math.floor(u/.06)*3.1+L.size)*[...L.pool].length);show=[...L.pool][pi];col=rnd(i+Math.floor(u/.06))>.7?C.red:C.dim}}else show=ch;
+      if(show){c.font=`${L.weight} ${L.size}px ${FONT[L.font]}`;c.fillStyle=col;c.textAlign='center';c.textBaseline='alphabetic';c.fillText(show,x+ws[i]/2,L.y)}x+=ws[i]})}
+  c.globalAlpha=1;txt(c,'每个字先乱跳，到点了“锁定”成正确的字',W/2,H-12,{align:'center',size:11})};
+
+/* 17 text on path */
+D.textpath=(c,t)=>{gridBg(c);const pts=[],cum=[0];for(let i=0;i<=240;i++){const x=-30+i*(540/240);pts.push({x,y:135+52*Math.sin(x*.017+t*1.1)});if(i)cum.push(cum[i-1]+Math.hypot(pts[i].x-pts[i-1].x,pts[i].y-pts[i-1].y))}
+  c.strokeStyle=C.faint;c.beginPath();pts.forEach((p,i)=>i?c.lineTo(p.x,p.y):c.moveTo(p.x,p.y));c.stroke();
+  const str='跟着路径走的字 · TEXT ON PATH · ';const chars=[...str];
+  c.textBaseline='middle';c.textAlign='center';
+  const wOf=ch=>{const lat=/[ -~·]/.test(ch);c.font=lat?`700 17px ${FONT.en}`:`700 19px ${FONT.zh}`;return c.measureText(ch).width+1};
+  const strW=chars.reduce((a,ch)=>a+wOf(ch),0);let s=(t*55)%strW-strW;const total=cum[cum.length-1];let idx=0;
+  while(s<total){const ch=chars[idx%chars.length],w=wOf(ch),mid=s+w/2;
+    if(mid>0&&mid<total){let j=1;while(j<cum.length-1&&cum[j]<mid)j++;const f=(mid-cum[j-1])/(cum[j]-cum[j-1]||1);const A=pts[j-1],B=pts[j];
+      c.save();c.translate(lerp(A.x,B.x,f),lerp(A.y,B.y,f));c.rotate(Math.atan2(B.y-A.y,B.x-A.x));c.fillStyle=/[A-Z]/.test(ch)?C.red:C.ink;c.fillText(ch,0,-11);c.restore()}
+    s+=w;idx++}};
+
+/* 18 particles to text */
+D.particles=(c,t,dt,s)=>{bg(c);
+  if(!s.pts){const cv=document.createElement('canvas');cv.width=W;cv.height=H;const x=cv.getContext('2d');x.fillStyle='#fff';x.font=`900 112px ${FONT.en}`;x.textAlign='center';x.textBaseline='middle';x.fillText('MOTION',240,128);
+    const d=x.getImageData(0,0,W,H).data;let arr=[];for(let y=0;y<H;y+=3)for(let X=0;X<W;X+=3)if(d[(y*W+X)*4+3]>128)arr.push([X,y]);
+    arr.sort((a,b)=>rnd(a[0]*7+a[1]*13)-rnd(b[0]*7+b[1]*13));arr=arr.slice(0,1800);
+    s.pts=arr.map(([X,Y],i)=>{const a=rnd(i*1.31)*TAU,R=110+rnd(i*2.7)*240;return{tx:X,ty:Y,sx:X+Math.cos(a)*R,sy:Y+Math.sin(a)*R*.8,dl:rnd(i*3.3)*.5,red:rnd(i*5.1)<.15,ph:rnd(i*9.1)*TAU}})}
+  const u=t%5.4;let state='散开漂浮';
+  for(const p of s.pts){let k;
+    if(u<3.0){k=E.inOutCubic(clamp((u-.4-p.dl)/1.2))}else{k=1-E.outCubic(clamp((u-3.0-p.dl*.3)/1.7))}
+    const wob=(1-k)*6;const x=lerp(p.sx,p.tx,k)+Math.sin(t*1.3+p.ph)*wob,y=lerp(p.sy,p.ty,k)+Math.cos(t*1.1+p.ph)*wob;
+    c.fillStyle=p.red?C.red:C.ink;c.fillRect(x-.85,y-.85,1.7,1.7)}
+  if(u>.4&&u<2.1)state='向心力：往字的形状聚';else if(u>=2.1&&u<3.0)state='成型';else if(u>=3.0)state='炸开散去';
+  txt(c,`${s.pts.length} PARTICLES`,16,H-14,{size:9,font:'px'});txt(c,state,W-16,H-14,{size:11,align:'right',color:C.ink})};
+
+/* 19 flow field */
+D.flow=(c,t,dt,s)=>{const spawn=p=>{p.x=rnd(Math.random()*999)*W;p.y=Math.random()*H;p.life=1+Math.random()*3;p.red=Math.random()<.12};
+  const stepF=h=>{c.fillStyle='rgba(18,20,25,0.07)';c.fillRect(0,0,W,H);const ink=[],red=[];
+    for(const p of s.p){const a=noise2(p.x*.0065,p.y*.0065+s.tt*.05)*TAU*2;const nx=p.x+Math.cos(a)*70*h,ny=p.y+Math.sin(a)*70*h;(p.red?red:ink).push(p.x,p.y,nx,ny);p.x=nx;p.y=ny;p.life-=h;
+      if(p.life<0||p.x<0||p.x>W||p.y<0||p.y>H)spawn(p)}
+    for(const [arr,col] of [[ink,'rgba(236,232,225,.55)'],[red,'rgba(255,71,87,.85)']]){c.strokeStyle=col;c.beginPath();for(let i=0;i<arr.length;i+=4){c.moveTo(arr[i],arr[i+1]);c.lineTo(arr[i+2],arr[i+3])}c.stroke()}s.tt+=h};
+  if(!s.p){bg(c);s.tt=0;s.p=[];for(let i=0;i<650;i++){const p={};spawn(p);s.p.push(p)}for(let i=0;i<90;i++)stepF(1/60)}
+  if(dt>0)stepF(dt);
+  c.fillStyle=C.bg;c.fillRect(0,H-26,W,26);txt(c,'每个位置都有一个“风向”，粒子顺着风走',W/2,H-10,{align:'center',size:11})};
+
+/* 20 burst + gravity */
+D.burst=(c,t)=>{gridBg(c);const u=t%2.8,k=1.5,g=520,vt=g/k,ox=240,oy=200;const cols=[C.red,C.teal,C.yel,C.ink];
+  if(u<.15){c.strokeStyle=C.ink;c.globalAlpha=1-u/.15;c.beginPath();c.arc(ox,oy,10+u*300,0,TAU);c.stroke();c.globalAlpha=1}
+  for(let i=0;i<150;i++){const a=-Math.PI/2+(rnd(i*1.7)-.5)*Math.PI*1.3,sp=200+rnd(i*2.9)*300,vx=Math.cos(a)*sp,vy=Math.sin(a)*sp;const e=(1-Math.exp(-k*u))/k;
+    const x=ox+vx*e,y=oy+(vy-vt)*e+vt*u;const al=1-clamp((u-1.9)/.6);if(al<=0)continue;
+    c.save();c.translate(x,y);c.rotate(rnd(i*3.1)*6+u*(rnd(i*4.3)-.5)*14);c.scale(Math.cos(u*(4+rnd(i)*8)+i),1);c.globalAlpha=al;c.fillStyle=cols[i%4];c.fillRect(-3,-6,6,12);c.restore()}
+  c.globalAlpha=1;txt(c,'初速度向外 + 重力往下 + 空气阻力 + 自转',W/2,24,{align:'center',size:11})};
+
+/* 21 repulsion */
+D.repel=(c,t)=>{bg(c);const fx=240+170*Math.sin(t*.9),fy=135+80*Math.sin(t*1.37),R=85;
+  for(let j=0;j<13;j++)for(let i=0;i<24;i++){const x0=12+i*20,y0=15+j*20;const dx=x0-fx,dy=y0-fy,d=Math.hypot(dx,dy)||1;let push=0;
+    if(d<R)push=Math.pow((R-d)/R,2);const x=x0+dx/d*push*34,y=y0+dy/d*push*34;dot(c,x,y,1.6+push*3,push>.25?C.red:C.ink)}
+  c.strokeStyle=C.dim;c.beginPath();c.arc(fx,fy,R,0,TAU);c.setLineDash([3,4]);c.stroke();c.setLineDash([]);dot(c,fx,fy,4,C.yel)};
+
+/* 22 perspective vs orthographic */
+const CUBE=(()=>{const v=[];for(const x of[-1,1])for(const y of[-1,1])for(const z of[-1,1])v.push([x,y,z]);const e=[];for(let i=0;i<8;i++)for(let j=i+1;j<8;j++){let d=0;for(let k=0;k<3;k++)if(v[i][k]!==v[j][k])d++;if(d===1)e.push([i,j])}return{v,e}})();
+D.persp=(c,t)=>{gridBg(c);const mode=Math.floor(t/3.4)%2,ph=(t%3.4);let m=E.inOutCubic(clamp(ph/.7));if(mode===0)m=1-m;
+  const ry=t*.5,rx=.42,D0=7,f=260;
+  const proj=([x,y,z])=>{let X=x*Math.cos(ry)+z*Math.sin(ry),Z=-x*Math.sin(ry)+z*Math.cos(ry);let Y=y*Math.cos(rx)-Z*Math.sin(rx);Z=y*Math.sin(rx)+Z*Math.cos(rx);
+    const sc=lerp(f/(D0+Z),f/D0,m);return[240+X*sc,140+Y*sc]};
+  [[-2.7,C.ink],[0,C.red],[2.7,C.ink]].forEach(([ox,col])=>{c.strokeStyle=col;c.lineWidth=1.6;c.beginPath();
+    for(const [a,b] of CUBE.e){const p=proj([CUBE.v[a][0]*.8+ox,CUBE.v[a][1]*.8,CUBE.v[a][2]*.8]),q=proj([CUBE.v[b][0]*.8+ox,CUBE.v[b][1]*.8,CUBE.v[b][2]*.8]);c.moveTo(p[0],p[1]);c.lineTo(q[0],q[1])}c.stroke()});c.lineWidth=1;
+  txt(c,m<.5?'透视 Perspective：近大远小':'正交 Orthographic：远近一样大',W/2,26,{align:'center',size:14,color:C.ink,weight:700})};
+
+/* 23 point cloud */
+const KNOT=(()=>{const a=[];for(let i=0;i<1700;i++){const s=rnd(i*1.11)*TAU,r=Math.cos(3*s)+2.2;const j=.32;a.push([r*Math.cos(2*s)+(rnd(i*2.2)-.5)*j,r*Math.sin(2*s)+(rnd(i*3.3)-.5)*j,-Math.sin(3*s)*1.1+(rnd(i*4.4)-.5)*j,rnd(i*5.5)<.13])}return a})();
+D.cloud=(c,t)=>{bg(c);const ry=t*.5,rx=t*.27+.4,D0=8,f=290;
+  for(const [x,y,z,red] of KNOT){let X=x*Math.cos(ry)+z*Math.sin(ry),Z=-x*Math.sin(ry)+z*Math.cos(ry);let Y=y*Math.cos(rx)-Z*Math.sin(rx);Z=y*Math.sin(rx)+Z*Math.cos(rx);
+    const sc=f/(D0+Z),dep=clamp((4-Z)/8);c.globalAlpha=.25+dep*.75;const r=.5+dep*1.6;c.fillStyle=red?C.red:C.ink;c.fillRect(240+X*sc-r/2,135+Y*sc-r/2,r,r)}
+  c.globalAlpha=1;txt(c,'1700 POINTS · NO SURFACES',16,H-14,{size:9,font:'px'})};
+
+/* 24 isometric city */
+D.iso=(c,t)=>{gridBg(c);const u=t%5.2,N=6,TW=44,TH=22,ox=240,oy=95;
+  const P=(i,j)=>[ox+(i-j)*TW/2,oy+(i+j)*TH/2];
+  c.strokeStyle=C.faint;for(let i=0;i<=N;i++){let a=P(i-.5,-.5),b=P(i-.5,N-.5);c.beginPath();c.moveTo(a[0],a[1]);c.lineTo(b[0],b[1]);c.stroke();a=P(-.5,i-.5);b=P(N-.5,i-.5);c.beginPath();c.moveTo(a[0],a[1]);c.lineTo(b[0],b[1]);c.stroke()}
+  for(let sum=0;sum<=2*(N-1);sum++)for(let i=0;i<N;i++){const j=sum-i;if(j<0||j>=N)continue;
+    const hgt=12+Math.pow(noise2(i*.55+3,j*.55+7),1.5)*95;const dl=sum*.08;let k=E.outBack(clamp((u-.2-dl)/.6));k*=1-E.inCubic(clamp((u-4.1-dl*.4)/.5));if(k<=0)continue;
+    const h=hgt*k,[x,y]=P(i,j),w=TW/2*.8,hh=TH/2*.8;const red=rnd(i*7.7+j*3.3)>.74;
+    c.fillStyle=red?'#B8303E':'#3a3f4c';c.beginPath();c.moveTo(x-w,y);c.lineTo(x,y+hh);c.lineTo(x,y+hh-h);c.lineTo(x-w,y-h);c.closePath();c.fill();
+    c.fillStyle=red?'#8E2330':'#272b35';c.beginPath();c.moveTo(x,y+hh);c.lineTo(x+w,y);c.lineTo(x+w,y-h);c.lineTo(x,y+hh-h);c.closePath();c.fill();
+    c.fillStyle=red?C.red:'#5b6272';c.beginPath();c.moveTo(x,y-hh-h);c.lineTo(x+w,y-h);c.lineTo(x,y+hh-h);c.lineTo(x-w,y-h);c.closePath();c.fill()}
+  txt(c,'等距：没有近大远小，像斜 45° 俯视的图纸',W/2,H-12,{align:'center',size:11})};
+
+/* 25 parallax */
+D.parallax=(c,t)=>{const gr=c.createLinearGradient(0,0,0,H);gr.addColorStop(0,'#171a23');gr.addColorStop(1,'#2a2030');c.fillStyle=gr;c.fillRect(0,0,W,H);
+  dot(c,360-(t*3)%40,70,22,'rgba(255,71,87,.85)');
+  const layers=[{sp:8,base:170,amp:70,f:.006,col:'#2c3040',lab:'远 · 慢'},{sp:28,base:200,amp:45,f:.012,col:'#3b4052',lab:'中'},{sp:75,base:232,amp:30,f:.03,col:'#555c70',lab:''},{sp:170,base:262,amp:22,f:.05,col:'#0c0d11',lab:'近 · 快'}];
+  layers.forEach((L,li)=>{c.fillStyle=L.col;c.beginPath();c.moveTo(0,H);for(let x=0;x<=W;x+=4){const wx=x+t*L.sp;c.lineTo(x,L.base-noise2(wx*L.f,li*10)*L.amp)}c.lineTo(W,H);c.closePath();c.fill()});
+  layers.forEach((L,li)=>{if(L.lab)txt(c,L.lab,W-12,L.base-L.amp*.2-(li===3?30:0),{size:11,align:'right',color:li===3?C.ink:C.dim})});
+  txt(c,'每层移动速度不同，就有了纵深',14,24,{size:11})};
+
+/* 26 infinite zoom */
+D.zoom=(c,t)=>{bg(c);const sp=.45,z=(t*sp)%1,cy=Math.floor(t*sp),f=.84,cols=[C.red,C.bg,C.ink,C.bg];
+  c.save();c.translate(240,135);for(let n=0;n<30;n++){const sz=Math.pow(f,n-z)*560;if(sz<1)break;c.save();c.rotate((n-z)*.15);c.fillStyle=cols[((n+cy)%4+4)%4];c.fillRect(-sz/2,-sz/2,sz,sz);c.restore()}c.restore();
+  txt(c,'∞  每一层都是上一层缩小一点、转一点',14,H-12,{size:11,color:C.ink})};
+
+/* 27 depth of field */
+const BOKEH=(()=>{const a=[];for(let i=0;i<24;i++)a.push({x:30+rnd(i*1.9)*420,y:30+rnd(i*2.7)*200,z:rnd(i*3.7),red:i%3===0});return a.sort((p,q)=>q.z-p.z)})();
+D.dof=(c,t)=>{bg(c);const f=.5+.5*Math.sin(t*.8);
+  for(const b of BOKEH){const r=8+(1-b.z)*22,bl=Math.abs(b.z-f)*26;const g=c.createRadialGradient(b.x,b.y,Math.max(0,r-bl/2),b.x,b.y,r+bl/2+.6);
+    const col=b.red?'255,71,87':'236,232,225',a=1/(1+bl*.07);g.addColorStop(0,`rgba(${col},${a})`);g.addColorStop(1,`rgba(${col},0)`);c.fillStyle=g;c.beginPath();c.arc(b.x,b.y,r+bl/2+1,0,TAU);c.fill()}
+  c.strokeStyle=C.faint;c.beginPath();c.moveTo(460.5,40);c.lineTo(460.5,230);c.stroke();const my=lerp(230,40,f);c.fillStyle=C.yel;c.fillRect(452,my-2,17,4);
+  txt(c,'近',446,234,{size:10,align:'right'});txt(c,'远',446,44,{size:10,align:'right'});
+  txt(c,'焦点在：'+(f<.33?'近处':f<.66?'中间':'远处'),14,24,{size:13,color:C.ink,weight:700})};
+
+/* 28 camera moves */
+const SCENE=(()=>{const o=[];for(let i=-6;i<=6;i++)o.push({k:'post',x:i*1.1,z:1.6});for(let i=-8;i<=8;i++)o.push({k:'tree',x:i*1.3+.4,z:3.2,h:1.3+rnd(i+20)*.8});return o})();
+D.camera=(c,t)=>{const per=2.6,ph=Math.floor(t/per)%4,q=(t%per)/per,k=(1-Math.cos(TAU*q))/2;
+  let camX=0,camZ=0,pan=0,zoom=1;if(ph===0)camX=1.1*k;else if(ph===1)pan=-150*k;else if(ph===2)camZ=.75*k;else zoom=1+.85*k;
+  const hz=135,f=170,eye=.6;const SX=(x,z)=>240+(x-camX)/(z-camZ)*f*zoom+pan,SY=(y,z)=>hz+(y)/(z-camZ)*f*zoom;
+  const gr=c.createLinearGradient(0,0,0,H);gr.addColorStop(0,'#161922');gr.addColorStop(.5,'#242836');c.fillStyle=gr;c.fillRect(0,0,W,H);
+  c.fillStyle='#1b1e26';c.fillRect(0,hz,W,H-hz);
+  c.fillStyle='#2e3344';c.beginPath();c.moveTo(0,H);for(let x=-14;x<=14;x+=.25){const y=eye-(2.2+noise2(x*.5,3)*2.4);c.lineTo(SX(x,11),SY(y,11))}c.lineTo(W,H);c.closePath();c.fill();
+  c.fillStyle='#1b1e26';c.fillRect(0,SY(eye,11),W,H);
+  for(const o of SCENE.filter(o=>o.k==='tree')){const gx=SX(o.x,o.z),gy=SY(eye,o.z),ty=SY(eye-o.h,o.z),w=.42/(o.z-camZ)*f*zoom;c.fillStyle='#4b5367';c.beginPath();c.moveTo(gx-w,gy);c.lineTo(gx,ty);c.lineTo(gx+w,gy);c.closePath();c.fill()}
+  for(const o of SCENE.filter(o=>o.k==='post')){const gx=SX(o.x,o.z),gy=SY(eye,o.z),ty=SY(eye-1.15,o.z),w=.07/(o.z-camZ)*f*zoom;c.fillStyle=C.red;c.fillRect(gx-w,ty,w*2,gy-ty)}
+  const names=[['移','Truck','机位横着走：近的跑得比远的快'],['摇','Pan','机位不动只转头：远近一起平移'],['推','Dolly In','机位往前走：近的变大得比远的多'],['变焦','Zoom','机位不动拉长焦：所有东西一起放大']];
+  c.fillStyle='rgba(18,20,25,.75)';c.fillRect(0,0,W,46);txt(c,names[ph][0],16,32,{size:22,weight:900,color:C.ink});txt(c,names[ph][1].toUpperCase(),66,20,{size:8,font:'px',color:C.red});txt(c,names[ph][2],66,36,{size:12,color:C.ink});
+  names.forEach((n,i)=>{const x=W-170+i*40;c.fillStyle=i===ph?C.red:'rgba(236,232,225,.14)';rrect(c,x,14,36,20,4);c.fill();txt(c,n[0],x+18,28,{size:11,align:'center',color:i===ph?'#fff':C.dim})})};
+
+/* 29 glitch */
+D.glitch=(c,t)=>{gridBg(c);const step=Math.floor(t*14);const I=clamp((noise2(t*1.6,4)-.45)*3)+(rnd(step)>.9?.6:0);
+  const dx=I*9;c.fillStyle=C.red;c.fillRect(300+(rnd(step+3)-.5)*I*20,40,150,92);txt(c,'08',438,124,{size:30,font:'px',color:C.bg,align:'right'});
+  c.save();c.globalCompositeOperation='screen';txt(c,'GRID',40-dx,210,{size:96,font:'en',weight:900,color:'#00E5FF',alpha:I>0?.9:0});txt(c,'GRID',40+dx,210,{size:96,font:'en',weight:900,color:'#FF2050',alpha:I>0?.9:0});c.restore();
+  txt(c,'GRID',40,210,{size:96,font:'en',weight:900,color:C.ink,alpha:1-I*.55});
+  if(I>.15){const cv=c.canvas;c.save();c.setTransform(1,0,0,1,0,0);const n=1+Math.floor(I*5);for(let k=0;k<n;k++){const y=Math.floor(rnd(step*7+k)*cv.height),h=Math.max(2,Math.floor(rnd(step*3+k)*cv.height*.08)),off=Math.floor((rnd(step*5+k)-.5)*I*60*SC);
+    c.drawImage(cv,0,y,cv.width,h,off,y,cv.width,h)}c.restore()}
+  c.fillStyle='rgba(0,0,0,.22)';for(let y=0;y<H;y+=3)c.fillRect(0,y,W,1);
+  txt(c,'像素偏移 · 色彩分离 · 扫描线',W/2,H-10,{align:'center',size:11})};
+
+/* 30 glow */
+D.glow=(c,t)=>{bg(c);const pulse=.75+.25*Math.sin(t*3);
+  c.strokeStyle=C.faint;c.beginPath();c.moveTo(240.5,0);c.lineTo(240.5,H);c.stroke();
+  const shape=(ox)=>{c.beginPath();c.arc(ox+120,105,44,0,TAU);c.moveTo(ox+30,195);for(let x=0;x<=180;x+=3)c.lineTo(ox+30+x,195+14*Math.sin(x*.07+t*2));};
+  c.lineWidth=2.5;c.strokeStyle=C.red;shape(0);c.stroke();
+  c.save();c.globalCompositeOperation='lighter';for(const [b,a] of [[26,.55],[12,.7],[4,.9]]){c.shadowBlur=b*SC*pulse;c.shadowColor=C.red;c.strokeStyle=`rgba(255,71,87,${a})`;c.lineWidth=2.5;shape(240);c.stroke()}
+  c.shadowBlur=0;c.strokeStyle='rgba(255,220,225,.95)';c.lineWidth=1;shape(240);c.stroke();c.restore();c.lineWidth=1;
+  txt(c,'无辉光',14,24,{size:12});txt(c,'辉光 Glow',254,24,{size:12,color:C.ink})};
+
+/* 31 halftone */
+D.halftone=(c,t)=>{bg(c);const sp=9;const b1={x:240+120*Math.sin(t*.6),y:135+50*Math.sin(t*.9)},b2={x:240+140*Math.cos(t*.45),y:135+60*Math.cos(t*.7)};
+  for(let y=sp/2;y<H;y+=sp)for(let x=sp/2;x<W;x+=sp){const v=Math.max(Math.exp(-((x-b1.x)**2+(y-b1.y)**2)/(2*60*60)),Math.exp(-((x-b2.x)**2+(y-b2.y)**2)/(2*45*45))*.9);
+    if(v<.04)continue;dot(c,x,y,v*sp*.55,v>.55?C.red:C.ink)}
+  c.fillStyle='rgba(18,20,25,.8)';c.fillRect(0,H-26,W,26);txt(c,'近看是大小不同的点，远看是明暗',W/2,H-10,{align:'center',size:11})};
+
+/* 32 pixelate + dither */
+const BAYER=[0,8,2,10,12,4,14,6,3,11,1,9,15,7,13,5].map(v=>(v+.5)/16);
+D.pixel=(c,t,dt,s)=>{const sizes=[2,3,4,6,8,12],ps=sizes[Math.floor(t/1.1)%sizes.length];const w=Math.ceil(W/ps),h=Math.ceil(H/ps);
+  if(!s.cv||s.ps!==ps){s.cv=document.createElement('canvas');s.cv.width=w;s.cv.height=h;s.cx=s.cv.getContext('2d');s.img=s.cx.createImageData(w,h);s.ps=ps}
+  const L=[Math.cos(t*.9),-.5,Math.sin(t*.9)],ln=Math.hypot(...L);const d=s.img.data;
+  for(let y=0;y<h;y++)for(let x=0;x<w;x++){const X=(x+.5)*ps,Y=(y+.5)*ps;const dx=(X-240)/95,dy=(Y-128)/95,r2=dx*dx+dy*dy;let v;
+    if(r2<1){const nz=Math.sqrt(1-r2);v=clamp((dx*L[0]+dy*L[1]+nz*L[2])/ln*.85+.12)}else v=clamp(.32-Y/H*.3);
+    const th=BAYER[(y%4)*4+(x%4)],o=(y*w+x)*4;let r,g,b;if(v>.88&&v>th){r=236;g=232;b=225}else if(v>th){r=255;g=71;b=87}else{r=24;g=26;b=33}d[o]=r;d[o+1]=g;d[o+2]=b;d[o+3]=255}
+  s.cx.putImageData(s.img,0,0);c.imageSmoothingEnabled=false;c.drawImage(s.cv,0,0,w*ps,h*ps);c.imageSmoothingEnabled=true;
+  c.fillStyle='rgba(18,20,25,.85)';c.fillRect(0,0,150,26);txt(c,`像素尺寸 ${ps}px`,10,18,{size:12,color:C.ink})};
+
+/* 33 grain + vignette */
+D.grain=(c,t,dt,s)=>{const sc=()=>{const g=c.createLinearGradient(0,0,0,H);g.addColorStop(0,'#2a2333');g.addColorStop(.62,'#b5485a');g.addColorStop(.63,'#1a1b22');g.addColorStop(1,'#121318');c.fillStyle=g;c.fillRect(0,0,W,H);
+    dot(c,240,150,34,'#ffd6a0');c.fillStyle='#1a1b22';c.beginPath();c.moveTo(0,H);for(let x=0;x<=W;x+=6)c.lineTo(x,172-noise2(x*.02,1)*40);c.lineTo(W,H);c.fill()};
+  sc();const dv=240+150*Math.sin(t*.6);
+  if(!s.cv){s.cv=document.createElement('canvas');s.cv.width=240;s.cv.height=135;s.cx=s.cv.getContext('2d');s.img=s.cx.createImageData(240,135)}
+  const d=s.img.data;for(let i=0;i<d.length;i+=4){const v=Math.random()*255;d[i]=d[i+1]=d[i+2]=v;d[i+3]=255}s.cx.putImageData(s.img,0,0);
+  c.save();c.beginPath();c.rect(dv,0,W-dv,H);c.clip();c.fillStyle='rgba(255,170,90,.08)';c.fillRect(0,0,W,H);
+  c.globalCompositeOperation='overlay';c.globalAlpha=.45;c.imageSmoothingEnabled=false;c.drawImage(s.cv,0,0,W,H);c.imageSmoothingEnabled=true;c.globalAlpha=1;c.globalCompositeOperation='source-over';
+  const vg=c.createRadialGradient(240,135,80,240,135,300);vg.addColorStop(0,'rgba(0,0,0,0)');vg.addColorStop(1,'rgba(0,0,0,.75)');c.fillStyle=vg;c.fillRect(0,0,W,H);c.restore();
+  c.fillStyle=C.ink;c.fillRect(dv-1,0,2,H);txt(c,'干净数字感',dv-10,22,{size:11,align:'right',color:C.ink});txt(c,'颗粒 + 暗角',dv+10,22,{size:11,color:C.ink})};
+
+/* 34 match cut (ball → full stop) */
+D.matchcut=(c,t)=>{gridBg(c);const u=t%4.6;c.font=`800 46px ${FONT.en}`;const word='SHOWREEL',tw=c.measureText(word).width;const x0=240-(tw+16)/2,bx=x0+tw+10,by=160,floor=by;
+  const fade=1-clamp((u-4.0)/.4);c.globalAlpha=fade;
+  let y,sx=1,sy=1,r=15;
+  if(u<.6){y=-20+(floor-r+20)*Math.pow(u/.6,2)}
+  else if(u<1.1){const q=(u-.6)/.5;y=floor-r-4*q*(1-q)*70;const d=Math.min(q,1-q);if(d<.08){const k=1-d/.08;sy=1-.4*k;sx=1+.4*k}}
+  else if(u<1.4){const q=(u-1.1)/.3;y=floor-r-4*q*(1-q)*22;const d=Math.min(q,1-q);if(d<.1){const k=1-d/.1;sy=1-.35*k;sx=1+.35*k}}
+  else{const q=clamp((u-1.4)/.45);r=lerp(15,6,E.outBack(q));y=floor-r;const sq=Math.sin(Math.PI*q)*.4;sy=1-sq;sx=1+sq}
+  c.save();c.translate(bx,floor-(floor-y-r)-r*sy);c.scale(sx,sy);dot(c,0,0,r,C.red);c.restore();
+  const rv=E.inOutCubic(clamp((u-1.7)/.8));c.save();c.beginPath();c.rect(bx-rv*(tw+20),100,rv*(tw+20),80);c.clip();txt(c,word,x0,by,{size:46,font:'en',weight:800,color:C.ink});c.restore();
+  c.globalAlpha=1;txt(c,'开头掉下来的球，落地变成了标题的句号',W/2,H-12,{align:'center',size:11})};
+
+/* scenes for transitions */
+function sceneA(c,ox=0,oy=0){c.save();c.translate(ox,oy);gridBg(c);c.strokeStyle=C.ink;c.lineWidth=2;c.beginPath();c.arc(150,135,50,0,TAU);c.stroke();c.lineWidth=1;txt(c,'A',330,170,{size:90,font:'en',weight:900,color:C.ink});c.restore()}
+function sceneB(c,ox=0,oy=0){c.save();c.translate(ox,oy);c.fillStyle=C.red;c.fillRect(0,0,W,H);c.fillStyle='rgba(255,255,255,.25)';for(let i=0;i<6;i++)c.fillRect(40,60+i*28,140,6);txt(c,'B',340,170,{size:90,font:'en',weight:900,color:C.bg});c.restore()}
+function sceneC(c,ox=0,oy=0){c.save();c.translate(ox,oy);c.fillStyle='#1d3a3a';c.fillRect(0,0,W,H);dot(c,140,135,46,C.teal);txt(c,'C',340,170,{size:90,font:'en',weight:900,color:C.ink});c.restore()}
+
+/* 35 iris / diamond wipe */
+D.iris=(c,t)=>{const u=t%4.4,cx=330,cy=110,maxR=Math.hypot(W,H);let lab='';
+  if(u<1.0){sceneA(c)}else if(u<1.7){sceneA(c);const r=E.inOutCubic((u-1)/.7)*maxR;c.save();c.beginPath();c.arc(cx,cy,r,0,TAU);c.clip();sceneB(c);c.restore();lab='圆形扩散 Iris'}
+  else if(u<2.9){sceneB(c)}else if(u<3.6){sceneB(c);const r=E.inOutCubic((u-2.9)/.7)*(W+H)*.6;c.save();c.beginPath();c.moveTo(240,135-r);c.lineTo(240+r,135);c.lineTo(240,135+r);c.lineTo(240-r,135);c.closePath();c.clip();sceneA(c);c.restore();lab='菱形擦除 Diamond Wipe'}
+  else sceneA(c);
+  if(lab){c.fillStyle='rgba(18,20,25,.8)';c.fillRect(0,H-28,W,28);txt(c,lab,W/2,H-10,{align:'center',size:12,color:C.ink})}};
+
+/* 36 push */
+D.push=(c,t)=>{const u=t%4.8;const seq=[[0,.9,null],[.9,1.5,['A','B','x']],[1.5,2.4,null],[2.4,3.0,['B','C','y']],[3.0,3.9,null],[3.9,4.5,['C','A','x']]];
+  const S={A:sceneA,B:sceneB,C:sceneC};let cur='A';let lab='';
+  for(const [a,b,tr] of seq){if(u>=a&&u<b){if(!tr){cur=u<.9?'A':u<2.4?'B':u<3.9?'C':'A';S[cur](c)}else{const q=(u-a)/(b-a),k=E.inOutQuint(q),v=Math.abs(E.inOutQuint(Math.min(1,q+.02))-E.inOutQuint(Math.max(0,q-.02)))/.04;
+      const draw=(kk,al)=>{c.globalAlpha=al;if(tr[2]==='x'){S[tr[0]](c,-kk*W,0);S[tr[1]](c,W-kk*W,0)}else{S[tr[0]](c,0,-kk*H);S[tr[1]](c,0,H-kk*H)}};
+      draw(k,1);if(v>.8){draw(k-.025,.3);draw(k+.025,.3)}c.globalAlpha=1;lab=tr[2]==='x'?'横向推 Push':'纵向推 Push Up'}}}
+  if(u>=4.5)sceneA(c);
+  if(lab){c.fillStyle='rgba(18,20,25,.8)';c.fillRect(0,H-28,W,28);txt(c,lab+'：中间最快，两头慢，加一点残影',W/2,H-10,{align:'center',size:12,color:C.ink})}};
+
+/* 37 flash montage */
+const MINI=[c=>{bg(c);dot(c,240,135,70,C.red)},c=>kinetic(c,2.6),c=>D.persp(c,1.2),c=>D.morph(c,.9),c=>{c.fillStyle=C.red;c.fillRect(0,0,W,H);txt(c,'08',240,175,{size:120,font:'px',color:C.bg,align:'center'})},c=>D.iso(c,2.5),c=>D.halftone(c,1.3),c=>D.cloud(c,2)];
+const CUTS=(()=>{const a=[];let tt=0,k=0;while(tt<2.9){a.push(tt);tt+=Math.max(.07,.42*Math.pow(.8,k));k++}return a})();
+D.montage=(c,t)=>{const u=t%4;if(u>=2.9){bg(c);const q=clamp((u-2.9)/.3);txt(c,'REEL',240,160,{size:70,font:'en',weight:900,color:C.ink,align:'center',alpha:q});dot(c,358,155,7,C.red);return}
+  let k=0;while(k+1<CUTS.length&&CUTS[k+1]<=u)k++;const local=u-CUTS[k];const sc=1.08-.08*E.outCubic(clamp(local/.15));
+  c.save();c.translate(240,135);c.scale(sc,sc);c.translate(-240,-135);MINI[k%MINI.length](c);c.restore();
+  if(local<.06){c.fillStyle=`rgba(255,255,255,${.45*(1-local/.06)})`;c.fillRect(0,0,W,H)}
+  c.fillStyle='rgba(18,20,25,.8)';c.fillRect(0,H-24,W,24);txt(c,`第 ${k+1} 刀 · 间隔 ${Math.round((CUTS[k+1]-CUTS[k]||.07)*1000)} 毫秒`,W/2,H-8,{align:'center',size:11,color:C.ink})};
+
+/* 38 swiss grid */
+D.swiss=(c,t)=>{c.fillStyle='#E9E6DF';c.fillRect(0,0,W,H);const u=t%4.6,m=24,gp=6,cw=(W-2*m-11*gp)/12;const colX=i=>m+i*(cw+gp);
+  const out=E.inCubic(clamp((u-3.9)/.5));
+  for(let i=0;i<12;i++){const a=clamp((u-i*.04)/.3)*(1-out);c.fillStyle=`rgba(226,54,75,${.08*a})`;c.fillRect(colX(i),0,cw,H);txt(c,String(i+1),colX(i)+cw/2,14,{size:8,font:'px',align:'center',color:`rgba(20,24,32,${.4*a})`})}
+  const k1=E.outCubic(clamp((u-.5)/.6))*(1-out);c.save();c.beginPath();c.rect(0,0,W,H);c.clip();txt(c,'GRID',lerp(-200,colX(0),k1),236,{size:92,font:'en',weight:900,color:'#141820'});c.restore();
+  const k2=E.outCubic(clamp((u-.8)/.6))*(1-out);c.fillStyle=C.red;const rx=colX(7),rw=colX(11)+cw-rx;c.fillRect(rx,lerp(-120,26,k2),rw,92);txt(c,'08',colX(11)+cw-4,lerp(-40,108,k2),{size:34,font:'px',align:'right',color:'#E9E6DF'});
+  for(let r=0;r<5;r++){const k=E.outCubic(clamp((u-1.2-r*.08)/.4))*(1-out);c.fillStyle='rgba(20,24,32,.75)';c.fillRect(colX(7),136+r*14,(rw*(r%2?.7:.95))*k,5)}
+  const k3=E.outCubic(clamp((u-1.5)/.4))*(1-out);c.fillStyle='#141820';c.fillRect(colX(0),36,(colX(5)+cw-colX(0))*k3,3);txt(c,'Raster / Ordnung',colX(0),60,{size:15,font:'en',weight:700,color:'#141820',alpha:k3})};
+
+/* 39 HUD */
+D.hud=(c,t)=>{gridBg(c,40);const p=(t%1.1)/1.1,b=bounceState(p),R=16,g=175,by=g-b.h*90-R*b.sy;
+  c.strokeStyle=C.faint;c.beginPath();c.moveTo(180,g+.5);c.lineTo(300,g+.5);c.stroke();c.save();c.translate(240,by);c.scale(b.sx,b.sy);dot(c,0,0,R,C.red);c.restore();
+  c.strokeStyle=C.ink;c.lineWidth=1.5;const br=(x,y,dx,dy)=>{c.beginPath();c.moveTo(x+dx*16,y);c.lineTo(x,y);c.lineTo(x,y+dy*16);c.stroke()};br(12,12,1,1);br(W-12,12,-1,1);br(12,H-12,1,-1);br(W-12,H-12,-1,-1);c.lineWidth=1;
+  txt(c,'03 — ELASTIC BOUNCE',24,30,{size:9,font:'px',color:C.ink});const fr=Math.floor(t*24);const tc=`00:00:${String(Math.floor(fr/24)%60).padStart(2,'0')}:${String(fr%24).padStart(2,'0')}`;txt(c,tc,W-24,30,{size:9,font:'px',color:C.ink,align:'right'});
+  if(Math.floor(t*2)%2===0)dot(c,28,H-30,4,C.red);txt(c,'REC',38,H-26,{size:9,font:'px',color:C.red});
+  for(let i=0;i<40;i++){const x=150+((i*10-t*40)%400+400)%400*.45;c.fillStyle=C.dim;c.fillRect(x,H-24,1,i%5?4:8)}c.fillStyle=C.red;c.fillRect(240,H-30,1.5,14);
+  c.strokeStyle=C.dim;c.beginPath();c.moveTo(240-30,by);c.lineTo(240-22,by);c.moveTo(240+22,by);c.lineTo(240+30,by);c.stroke();txt(c,`X 240  Y ${String(Math.round(by)).padStart(3,'0')}`,276,by+3,{size:8,font:'px'});
+  for(let i=0;i<6;i++){const v=noise2(t*3,i*3);c.fillStyle=i===2?C.red:C.dim;c.fillRect(W-58+i*7,200-v*60,4,v*60)}
+  txt(c,'SCALE 1.00',24,58,{size:8,font:'px'});txt(c,'EASE OUT BACK',24,72,{size:8,font:'px'})};
+
+/* ===== 50 版新增 ===== */
+/* ===== GPU helper (WebGL) for the two heaviest demos ===== */
+const GLR=(()=>{let cv=null,gl=null,buf=null,dead=false;const progs={};
+  const VS='attribute vec2 p;void main(){gl_Position=vec4(p,0.,1.);}';
+  function init(){cv=document.createElement('canvas');try{gl=cv.getContext('webgl',{antialias:false,preserveDrawingBuffer:true})}catch(e){gl=null}
+    if(!gl){dead=true;return}const dbg=gl.getExtension('WEBGL_debug_renderer_info'),rn=dbg?String(gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL)):'';if(/swiftshader|llvmpipe|software/i.test(rn)&&!window.__forceGL){dead=true;return}buf=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,buf);gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1,3,-1,-1,3]),gl.STATIC_DRAW)}
+  function prog(name,fs){if(name in progs)return progs[name];
+    const sh=(type,src)=>{const o=gl.createShader(type);gl.shaderSource(o,src);gl.compileShader(o);if(!gl.getShaderParameter(o,gl.COMPILE_STATUS)){console.warn(gl.getShaderInfoLog(o));return null}return o};
+    const v=sh(gl.VERTEX_SHADER,VS),f=sh(gl.FRAGMENT_SHADER,fs);if(!v||!f)return progs[name]=null;
+    const pr=gl.createProgram();gl.attachShader(pr,v);gl.attachShader(pr,f);gl.linkProgram(pr);if(!gl.getProgramParameter(pr,gl.LINK_STATUS))return progs[name]=null;
+    return progs[name]={p:pr,loc:gl.getAttribLocation(pr,'p')}}
+  return{draw(c,name,fs,un){if(dead)return false;if(!gl)init();if(dead||gl.isContextLost())return false;const P=prog(name,fs);if(!P)return false;
+    const w=Math.max(2,Math.min(1280,c.canvas.width)),h=Math.max(2,Math.min(720,c.canvas.height));if(cv.width!==w||cv.height!==h){cv.width=w;cv.height=h}
+    gl.viewport(0,0,w,h);gl.useProgram(P.p);gl.bindBuffer(gl.ARRAY_BUFFER,buf);gl.enableVertexAttribArray(P.loc);gl.vertexAttribPointer(P.loc,2,gl.FLOAT,false,0,0);
+    gl.uniform2f(gl.getUniformLocation(P.p,'R'),w,h);for(const k in un)gl.uniform1f(gl.getUniformLocation(P.p,k),un[k]);
+    gl.drawArrays(gl.TRIANGLES,0,3);c.drawImage(cv,0,0,W,H);return true}}})();
+const GLHEAD='#ifdef GL_FRAGMENT_PRECISION_HIGH\nprecision highp float;\n#else\nprecision mediump float;\n#endif\nuniform vec2 R;uniform float T;\n';
+const RAY_FS=GLHEAD+`
+float smin(float a,float b,float k){float h=clamp(.5+.5*(b-a)/k,0.,1.);return mix(b,a,h)-k*h*(1.-h);}
+float sd(vec3 p){float d=1e9;for(int i=0;i<4;i++){float fi=float(i);vec3 c=vec3(1.25*sin(T*.8+fi*1.7),.55*sin(T*1.1+fi*2.3),.6*cos(T*.6+fi*1.3));d=smin(d,length(p-c)-(.5+.14*mod(fi,2.)),.6);}return d;}
+void main(){vec3 acc=vec3(0.);
+ {vec2 fc=gl_FragCoord.xy;vec2 uv=fc/R*2.-1.;uv.y*=R.y/R.x;
+  vec3 rd=normalize(vec3(uv,1.45)),ro=vec3(0.,0.,-3.4),p=ro;float t=0.,mn=9.;bool hit=false;
+  for(int i=0;i<72;i++){p=ro+rd*t;float d=sd(p);mn=min(mn,d);if(d<.0008){hit=true;break;}t+=d;if(t>7.)break;}
+  vec3 col;float gy=1.-gl_FragCoord.y/R.y;
+  if(hit){vec2 e=vec2(.0008,-.0008);vec3 n=normalize(e.xyy*sd(p+e.xyy)+e.yyx*sd(p+e.yyx)+e.yxy*sd(p+e.yxy)+e.xxx*sd(p+e.xxx));
+   vec3 L=normalize(vec3(.57,.66,-.48));float dif=max(0.,dot(n,L));vec3 H=normalize(L-rd);float sp=pow(max(0.,dot(n,H)),60.);float fr=pow(clamp(1.+dot(n,rd),0.,1.),3.);
+   float env=.5+.5*n.y;
+   col=vec3(1.,.235,.306)*(.12+.8*dif+.1*env)+vec3(1.)*sp+vec3(.43,.27,.27)*fr;}
+  else{vec3 bgc=vec3(16.+gy*12.,18.+gy*10.,24.+gy*16.)/255.;float cov=clamp(1.-mn/.05,0.,1.);col=mix(bgc,vec3(.47,.11,.16),cov*.5);}
+  acc+=min(col,1.);}
+ gl_FragColor=vec4(acc,1.);}`;
+const FRAC_FS=GLHEAD+`uniform float Z;uniform float MI;
+vec3 pal(float q){q=fract(q)*6.;
+ vec3 a=vec3(14.,15.,20.)/255.,b=vec3(70.,14.,30.)/255.,c=vec3(255.,71.,87.)/255.,d=vec3(245.,196.,81.)/255.,e=vec3(236.,232.,225.)/255.;
+ if(q<1.)return mix(a,b,q);if(q<2.)return mix(b,c,q-1.);if(q<3.)return mix(c,d,q-2.);if(q<4.)return mix(d,e,q-3.);if(q<5.)return mix(e,c,q-4.);return mix(c,a,q-5.);}
+void main(){vec3 acc=vec3(0.);
+ for(int sx=0;sx<2;sx++){vec2 fc=gl_FragCoord.xy+vec2(float(sx)*.5-.25,float(sx)*.5-.25);vec2 uv=fc/R-.5;uv.y*=R.y/R.x;
+  vec2 c0=vec2(-0.743643887037151,0.131825904205330)+uv*Z;vec2 z=vec2(0.);float n=0.;float r2=0.;
+  for(int i=0;i<420;i++){if(float(i)>=MI)break;z=vec2(z.x*z.x-z.y*z.y,2.*z.x*z.y)+c0;r2=dot(z,z);if(r2>256.)break;n+=1.;}
+  if(n>=MI)acc+=vec3(14.,15.,20.)/255.;else{float mu=n+1.-log(log(sqrt(r2)))/log(2.);acc+=pal(sqrt(mu)*.22+T*.03);}}
+ gl_FragColor=vec4(acc*.5,1.);}`;
+
+
+function smin(a,b,k){const h=clamp(.5+.5*(b-a)/k);return lerp(b,a,h)-k*h*(1-h)}
+D.raymarch=(c,t,dt,s)=>{if(GLR.draw(c,'ray',RAY_FS,{T:t})){txt(c,'没有一个三维模型：每个像素都在用公式算“光线打到了什么”',W/2,H-10,{align:'center',size:11});return}
+  const w=200,h=112;
+  if(!s.cv){s.cv=document.createElement('canvas');s.cv.width=w;s.cv.height=h;s.cx=s.cv.getContext('2d');s.img=s.cx.createImageData(w,h)}
+  const B=[];for(let i=0;i<4;i++)B.push([1.25*Math.sin(t*.8+i*1.7),.55*Math.sin(t*1.1+i*2.3),.6*Math.cos(t*.6+i*1.3),.5+.14*(i%2)]);
+  const sd=(x,y,z)=>{let d=1e9;for(const b of B){const dx=x-b[0],dy=y-b[1],dz=z-b[2];d=smin(d,Math.sqrt(dx*dx+dy*dy+dz*dz)-b[3],.6)}return d};
+  const L=[.57,.66,-.48],data=s.img.data;let o=0;let BR=0;for(const b of B)BR=Math.max(BR,Math.hypot(b[0],b[1],b[2])+b[3]+.35);
+  for(let py=0;py<h;py++)for(let px=0;px<w;px++){const u=(px+.5)/w*2-1,v=-((py+.5)/h*2-1)*h/w;
+    let dx=u,dy=v,dz=1.45;const il=1/Math.hypot(dx,dy,dz);dx*=il;dy*=il;dz*=il;
+    let T=0,hit=false,x=0,y=0,z=0,mn=9;const bb=-3.4*dz,disc=bb*bb-(11.56-BR*BR);let steps=48;if(disc<0)steps=0;else T=Math.max(0,-bb-Math.sqrt(disc));
+    for(let i=0;i<steps;i++){x=dx*T;y=dy*T;z=-3.4+dz*T;const d=sd(x,y,z);if(d<mn)mn=d;if(d<.004){hit=true;break}T+=d;if(T>7)break}
+    let r,g,b;
+    if(hit){const e=.004,n0=sd(x+e,y-e,z-e),n1=sd(x-e,y-e,z+e),n2=sd(x-e,y+e,z-e),n3=sd(x+e,y+e,z+e);
+      let nx=n0-n1-n2+n3,ny=-n0-n1+n2+n3,nz=-n0+n1-n2+n3;const nl=1/(Math.hypot(nx,ny,nz)||1);nx*=nl;ny*=nl;nz*=nl;
+      const dif=Math.max(0,nx*L[0]+ny*L[1]+nz*L[2]);let hx=L[0]-dx,hy=L[1]-dy,hz=L[2]-dz;const hl=1/Math.hypot(hx,hy,hz);
+      const sp=Math.pow(Math.max(0,(nx*hx+ny*hy+nz*hz)*hl),40),fr=Math.pow(clamp(1+(nx*dx+ny*dy+nz*dz)),3);
+      r=255*(.14+.86*dif)+255*sp+110*fr;g=60*(.25+.75*dif)+255*sp+70*fr;b=78*(.25+.75*dif)+255*sp+70*fr}
+    else{const gy=py/h,cov=clamp(1-mn/.05);r=lerp(16+gy*12,120,cov*.6);g=lerp(18+gy*10,28,cov*.6);b=lerp(24+gy*16,40,cov*.6)}
+    data[o]=Math.min(255,r);data[o+1]=Math.min(255,g);data[o+2]=Math.min(255,b);data[o+3]=255;o+=4}
+  s.cx.putImageData(s.img,0,0);c.imageSmoothingEnabled=true;c.imageSmoothingQuality='high';c.drawImage(s.cv,0,0,W,H);
+  txt(c,'没有一个三维模型：每个像素都在用公式算“光线打到了什么”',W/2,H-10,{align:'center',size:11})};
+
+D.rd=(c,t,dt,s)=>{const w=120,h=68,N=w*h;
+  const seed=()=>{s.A=new Float32Array(N).fill(1);s.B=new Float32Array(N);s.A2=new Float32Array(N);s.B2=new Float32Array(N);
+    const sp=[[60,34,3],[30,20,2],[90,48,2]];for(const [cx,cy,r] of sp)for(let y=-r;y<=r;y++)for(let x=-r;x<=r;x++)if(x*x+y*y<=r*r)s.B[(cy+y)*w+cx+x]=1;
+    s.age=0;s.acc=0;if(!s.cv){s.cv=document.createElement('canvas');s.cv.width=w;s.cv.height=h;s.cx=s.cv.getContext('2d');s.img=s.cx.createImageData(w,h)}};
+  const step=()=>{const A=s.A,Bv=s.B,A2=s.A2,B2=s.B2,f=.0367,k=.0649;
+    for(let y=0;y<h;y++){const ym=((y-1+h)%h)*w,y0=y*w,yp=((y+1)%h)*w;for(let x=0;x<w;x++){const xm=(x-1+w)%w,xp=(x+1)%w,i=y0+x;
+      const la=-A[i]+.2*(A[ym+x]+A[yp+x]+A[y0+xm]+A[y0+xp])+.05*(A[ym+xm]+A[ym+xp]+A[yp+xm]+A[yp+xp]);
+      const lb=-Bv[i]+.2*(Bv[ym+x]+Bv[yp+x]+Bv[y0+xm]+Bv[y0+xp])+.05*(Bv[ym+xm]+Bv[ym+xp]+Bv[yp+xm]+Bv[yp+xp]);
+      const abb=A[i]*Bv[i]*Bv[i];A2[i]=A[i]+(la-abb+f*(1-A[i]));B2[i]=Bv[i]+(.5*lb+abb-(k+f)*Bv[i])}}
+    s.A=A2;s.A2=A;s.B=B2;s.B2=Bv};
+  if(!s.A){seed();for(let i=0;i<1200;i++)step()}
+  s.acc+=dt*1000;s.age+=dt;let n=Math.min(40,Math.floor(s.acc));s.acc-=n;for(let i=0;i<n;i++)step();
+  if(s.age>5.5){seed();for(let i=0;i<150;i++)step()}
+  const d=s.img.data;for(let i=0;i<N;i++){const v=clamp((s.B[i]-.08)*3.4),hi=clamp((v-.75)*4),o=i*4;
+    d[o]=lerp(18,255,v)+hi*(236-255);d[o+1]=lerp(20,71,v)+hi*(232-71);d[o+2]=lerp(25,87,v)+hi*(225-87);d[o+3]=255}
+  s.cx.putImageData(s.img,0,0);c.imageSmoothingEnabled=true;c.drawImage(s.cv,0,0,W,H);
+  c.fillStyle='rgba(18,20,25,.8)';c.fillRect(0,H-24,W,24);txt(c,'每个点长大到一定程度就自己分裂成两个',W/2,H-8,{align:'center',size:11,color:C.ink})};
+
+D.godrays=(c,t,dt,s)=>{const w=240,h=135;
+  if(!s.o){s.o=document.createElement('canvas');s.o.width=w;s.o.height=h;s.ox=s.o.getContext('2d');s.r=document.createElement('canvas');s.r.width=w;s.r.height=h;s.rx=s.r.getContext('2d')}
+  const lx=240+150*Math.sin(t*.5),ly=118+26*Math.sin(t*.8);const word=(ctx,fill)=>{ctx.font=`900 112px ${FONT.en}`;ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillStyle=fill;ctx.fillText('LIGHT',240,140)};
+  const o=s.ox;o.setTransform(1,0,0,1,0,0);o.globalCompositeOperation='source-over';o.clearRect(0,0,w,h);o.setTransform(.5,0,0,.5,0,0);
+  const g=o.createRadialGradient(lx,ly,0,lx,ly,110);g.addColorStop(0,'rgba(255,244,228,1)');g.addColorStop(.2,'rgba(255,150,140,.95)');g.addColorStop(1,'rgba(255,71,87,0)');o.fillStyle=g;o.fillRect(0,0,W,H);
+  o.globalCompositeOperation='destination-out';word(o,'#000');o.globalCompositeOperation='source-over';
+  const r=s.rx;r.setTransform(1,0,0,1,0,0);r.globalAlpha=1;r.globalCompositeOperation='source-over';r.clearRect(0,0,w,h);r.globalCompositeOperation='lighter';
+  const n=30;for(let i=0;i<n;i++){const sc=1+i*.045;r.globalAlpha=.11*(1-i/n);r.setTransform(sc,0,0,sc,(lx/2)*(1-sc),(ly/2)*(1-sc));r.drawImage(s.o,0,0)}
+  r.setTransform(1,0,0,1,0,0);r.globalAlpha=1;r.globalCompositeOperation='source-over';
+  bg(c);c.globalCompositeOperation='lighter';c.drawImage(s.r,0,0,W,H);c.globalCompositeOperation='source-over';
+  word(c,'#0b0c10');c.strokeStyle='rgba(255,140,140,.35)';c.lineWidth=1;c.strokeText('LIGHT',240,140);
+  txt(c,'光在字的后面，从缝里透出来',W/2,H-10,{align:'center',size:11})};
+
+D.cloth=(c,t,dt,s)=>{const cols=20,rows=12,sp=13,ox=120,oy=46;
+  const cons=(a,b)=>{const dx=b.x-a.x,dy=b.y-a.y,d=Math.hypot(dx,dy)||1e-6,df=(d-sp)/d;if(a.pin){b.x-=dx*df;b.y-=dy*df}else if(b.pin){a.x+=dx*df;a.y+=dy*df}else{a.x+=dx*df*.5;a.y+=dy*df*.5;b.x-=dx*df*.5;b.y-=dy*df*.5}};
+  const st=hh=>{s.tt+=hh;for(const p of s.p){if(p.pin)continue;const vx=(p.x-p.px)*.985,vy=(p.y-p.py)*.985;p.px=p.x;p.py=p.y;
+      const reach=clamp((p.x-ox)/(cols*sp));const wind=(1100+700*noise2(s.tt*.6,p.y*.02))*(1+.35*Math.sin(s.tt*5-p.x*.05));p.x+=vx+wind*hh*hh;p.y+=vy+(140+2600*reach*Math.sin(s.tt*7-p.x*.07+p.y*.012))*hh*hh}
+    for(let it=0;it<12;it++)for(let j=0;j<rows;j++)for(let i=0;i<cols;i++){const a=s.p[j*cols+i];if(i<cols-1)cons(a,s.p[j*cols+i+1]);if(j<rows-1)cons(a,s.p[(j+1)*cols+i])}};
+  if(!s.p){s.tt=0;s.p=[];for(let j=0;j<rows;j++)for(let i=0;i<cols;i++){const x=ox+i*sp,y=oy+j*sp;s.p.push({x,y,px:x,py:y,pin:i===0})}for(let k=0;k<240;k++)st(1/120)}
+  const n=Math.min(8,Math.max(1,Math.ceil(dt/(1/120))));for(let k=0;k<n&&dt>0;k++)st(dt/n);
+  gridBg(c);c.strokeStyle=C.ink;c.lineWidth=4;c.beginPath();c.moveTo(ox-2,oy-14);c.lineTo(ox-2,258);c.stroke();c.lineWidth=1;dot(c,ox-2,oy-16,5,C.ink);
+  for(let j=0;j<rows-1;j++)for(let i=0;i<cols-1;i++){const a=s.p[j*cols+i],b=s.p[j*cols+i+1],d=s.p[(j+1)*cols+i+1],e=s.p[(j+1)*cols+i];
+    const sh=clamp(.62+1.6*((b.y-a.y)/sp)-.5*(1-(b.x-a.x)/sp));c.fillStyle=`rgb(${Math.round(70+185*sh)},${Math.round(20+51*sh+40*sh*sh)},${Math.round(30+57*sh+30*sh*sh)})`;
+    c.beginPath();c.moveTo(a.x,a.y);c.lineTo(b.x,b.y);c.lineTo(d.x,d.y);c.lineTo(e.x,e.y);c.closePath();c.fill();c.strokeStyle=c.fillStyle;c.stroke()}
+  txt(c,'一张点和弹簧连成的网，受重力和风',W/2,H-10,{align:'center',size:11})};
+
+D.kaleido=(c,t)=>{bg(c);const n=16,th=TAU/n,R=300;
+  const src=()=>{c.lineWidth=.9;
+    for(let k=0;k<6;k++){const r1=30+k*28+18*Math.sin(t*.7+k),r2=r1+60+30*Math.sin(t*.5+k*1.7),a1=th*(.5+.5*Math.sin(t*.4+k)),a2=th*(.5+.5*Math.cos(t*.33+k*2));
+      c.strokeStyle=k===2?'rgba(255,71,87,.95)':'rgba(236,232,225,.55)';c.beginPath();c.moveTo(Math.cos(a1)*r1,Math.sin(a1)*r1);c.lineTo(Math.cos(a2)*r2,Math.sin(a2)*r2);c.stroke()}
+    for(let k=0;k<3;k++){const r=60+k*55+20*Math.sin(t*.6+k*2),a=th*.5;c.strokeStyle=k===1?'rgba(255,71,87,.8)':'rgba(236,232,225,.35)';c.setLineDash([2,4]);c.beginPath();c.arc(Math.cos(a)*r,Math.sin(a)*r,14+8*Math.sin(t+k),0,TAU);c.stroke();c.setLineDash([])}
+    for(let k=0;k<4;k++){const r=(t*22+k*60)%240+20,a=th*(.5+.45*Math.sin(t*.8+k));dot(c,Math.cos(a)*r,Math.sin(a)*r,1.3,k%2?C.red:C.ink)}c.lineWidth=1};
+  for(let i=0;i<n;i++){c.save();c.translate(240,135);c.rotate(i*th+t*.06);if(i%2)c.scale(1,-1),c.rotate(-th);
+    c.beginPath();c.moveTo(0,0);c.lineTo(R,0);c.lineTo(Math.cos(th)*R,Math.sin(th)*R);c.closePath();c.clip();src();c.restore()}
+  const vg=c.createRadialGradient(240,135,60,240,135,260);vg.addColorStop(0,'rgba(18,20,25,0)');vg.addColorStop(1,'rgba(18,20,25,.85)');c.fillStyle=vg;c.fillRect(0,0,W,H)};
+
+D.ascii=(c,t)=>{bg(c);const cols=68,rows=24,cw=W/cols,chh=(H-8)/rows;const zb=new Float32Array(cols*rows),out=new Int8Array(cols*rows).fill(-1);
+  const A=t*1.0+1,Bb=t*.5;const cA=Math.cos(A),sA=Math.sin(A),cB=Math.cos(Bb),sB=Math.sin(Bb);const chars='.,-~:;=!*#$@';
+  const R1=1,R2=2,K2=5,K1=cols*K2*3/(8*(R1+R2))*.9;
+  for(let th=0;th<TAU;th+=.07){const ct=Math.cos(th),st=Math.sin(th);for(let ph=0;ph<TAU;ph+=.02){const cp=Math.cos(ph),sp=Math.sin(ph);
+    const cx=R2+R1*ct,cy=R1*st;const x=cx*(cB*cp+sA*sB*sp)-cy*cA*sB,y=cx*(sB*cp-sA*cB*sp)+cy*cA*cB,z=K2+cA*cx*sp+cy*sA,ooz=1/z;
+    const xp=Math.floor(cols/2+K1*ooz*x),yp=Math.floor(rows/2-K1*ooz*y*(cw/chh));const L=cp*ct*sB-cA*ct*sp-sA*st+cB*(cA*st-ct*sA*sp);
+    if(L>0&&xp>=0&&xp<cols&&yp>=0&&yp<rows){const i=xp+yp*cols;if(ooz>zb[i]){zb[i]=ooz;out[i]=Math.min(11,Math.floor(L*8))}}}}
+  c.font=`700 ${Math.round(chh)}px ui-monospace,Menlo,Consolas,monospace`;c.textAlign='center';c.textBaseline='middle';
+  for(let i=0;i<out.length;i++){const v=out[i];if(v<0)continue;c.fillStyle=v>=9?C.red:`rgba(236,232,225,${.35+v*.06})`;c.fillText(chars[v],(i%cols+.5)*cw,(Math.floor(i/cols)+.5)*chh+2)}
+  c.fillStyle='rgba(18,20,25,.85)';c.fillRect(0,H-22,W,22);txt(c,'越亮的地方用越“密”的符号：.,-~:;=!*#$@',W/2,H-7,{align:'center',size:11,color:C.ink})};
+
+D.audioviz=(c,t)=>{gridBg(c);const ph=(t%.5)/.5,bar=Math.floor(t/.5)%4,kick=1-E.outCubic(ph);const n=80,R0=58;
+  c.save();c.translate(240,128);c.lineCap='round';
+  for(let i=0;i<n;i++){const m=Math.min(i,n-i)/(n/2),low=1-m;const v=clamp(noise2(m*7,t*3.2)*.65*(.45+m*.55)+low*low*low*kick*(bar===0?1:.6)*1.1);
+    const len=4+v*72,a=i/n*TAU-Math.PI/2;c.strokeStyle=v>.55?C.red:`rgba(236,232,225,${.35+v*.6})`;c.lineWidth=2.6;
+    c.beginPath();c.moveTo(Math.cos(a)*(R0+4),Math.sin(a)*(R0+4));c.lineTo(Math.cos(a)*(R0+4+len),Math.sin(a)*(R0+4+len));c.stroke()}
+  c.lineWidth=1.5;c.strokeStyle=C.ink;c.beginPath();c.arc(0,0,R0*(.82+.14*kick),0,TAU);c.stroke();dot(c,0,0,10+16*kick*(bar===0?1:.5),bar===0?C.red:C.ink);c.restore();c.lineWidth=1;
+  txt(c,'120 BPM',240,268-6,{size:9,font:'px',align:'center'});txt(c,'低音在最上面：鼓点一来，上面那几根一起跳',14,22,{size:11})};
+
+D.terrain=(c,t)=>{const hz=120,f=210,camH=1.5,gap=.9,travel=t*3.2;
+  const sky=c.createLinearGradient(0,0,0,hz);sky.addColorStop(0,'#100e1c');sky.addColorStop(1,'#3a1430');c.fillStyle=sky;c.fillRect(0,0,W,hz);
+  c.save();c.beginPath();c.arc(240,hz-4,66,0,TAU);c.clip();const sg=c.createLinearGradient(0,hz-70,0,hz);sg.addColorStop(0,'#F5C451');sg.addColorStop(1,'#FF4757');c.fillStyle=sg;c.fillRect(170,hz-74,140,74);
+  c.fillStyle='#2a1228';for(let k=0;k<6;k++){const y=hz-38+k*8+((t*6)%8);c.fillRect(170,y,140,1.5+k*.7)}c.restore();
+  c.fillStyle='#0d0b14';c.fillRect(0,hz,W,H-hz);
+  const base=Math.floor(travel/gap),K=34,xs=[];for(let x=-12;x<=12;x++)xs.push(x);
+  const rows=[];for(let k=2;k<=K;k++){const zw=(base+k)*gap,zr=zw-travel;rows[k]=xs.map(x=>{const hgt=noise2(x*.32+5,zw*.32)*3.4*Math.pow(Math.abs(x)/9,1.4)+noise2(x*.9,zw*.9)*.25;return[240+x/zr*f,hz+(camH-hgt)/zr*f,zr]})}
+  for(let k=K;k>=3;k--){const far=rows[k],near=rows[k-1];const al=clamp(1-far[0][2]/30);
+    c.fillStyle='#0d0b14';c.beginPath();far.forEach((p,i)=>i?c.lineTo(p[0],p[1]):c.moveTo(p[0],p[1]));for(let i=near.length-1;i>=0;i--)c.lineTo(near[i][0],near[i][1]);c.closePath();c.fill();
+    c.strokeStyle=`rgba(255,71,140,${al})`;c.beginPath();far.forEach((p,i)=>i?c.lineTo(p[0],p[1]):c.moveTo(p[0],p[1]));for(let i=0;i<far.length;i++){c.moveTo(far[i][0],far[i][1]);c.lineTo(near[i][0],near[i][1])}c.stroke()}
+  c.strokeStyle='rgba(255,71,140,1)';c.beginPath();rows[2].forEach((p,i)=>i?c.lineTo(p[0],p[1]):c.moveTo(p[0],p[1]));c.stroke();
+  txt(c,'只画网格线，不画表面，镜头一直往前飞',14,22,{size:11,color:C.ink})};
+
+D.shatter=(c,t,dt,s)=>{const px=70,py=62,pw=340,ph=140,ix=250,iy=128;
+  if(!s.img){const cv=document.createElement('canvas');cv.width=W*2;cv.height=H*2;const x=cv.getContext('2d');x.scale(2,2);x.fillStyle=C.red;rrect(x,px,py,pw,ph,10);x.fill();
+    x.fillStyle=C.bg;x.font=`900 64px ${FONT.en}`;x.textAlign='center';x.textBaseline='middle';x.fillText('SHATTER',240,128);x.font=`10px ${FONT.px}`;x.fillText('BREAK · FLY · REWIND',240,176);s.img=cv;
+    const gc=10,gr=5,V=[];for(let j=0;j<=gr;j++)for(let i=0;i<=gc;i++){const edge=i===0||j===0||i===gc||j===gr;const jx=edge?0:(rnd(i*7.1+j*3.3)-.5)*pw/gc*.8,jy=edge?0:(rnd(i*2.9+j*8.7)-.5)*ph/gr*.8;V.push([px+i*pw/gc+jx,py+j*ph/gr+jy])}
+    s.sh=[];let id=0;for(let j=0;j<gr;j++)for(let i=0;i<gc;i++){const a=V[j*(gc+1)+i],b=V[j*(gc+1)+i+1],d=V[(j+1)*(gc+1)+i+1],e=V[(j+1)*(gc+1)+i];
+      for(const tri of (rnd(i+j*11)>.5?[[a,b,d],[a,d,e]]:[[a,b,e],[b,d,e]])){const cx=(tri[0][0]+tri[1][0]+tri[2][0])/3,cy=(tri[0][1]+tri[1][1]+tri[2][1])/3;const dx=cx-ix,dy=cy-iy,dl=Math.hypot(dx,dy)||1;id++;
+        s.sh.push({tri,cx,cy,vx:dx/dl*(160+rnd(id*1.7)*260)+(rnd(id*2.3)-.5)*120,vy:dy/dl*(160+rnd(id*1.7)*260)-120-rnd(id*3.1)*120,spin:(rnd(id*4.9)-.5)*9,dl:dl*.0016})}}}
+  gridBg(c);const u=t%4.8;let tau=0,lab='完整';
+  if(u<.8){tau=0}else if(u<1.0){tau=0;lab='撞击'}else if(u<2.6){tau=u-1.0;lab='碎开'}else if(u<2.9){tau=1.6;lab='碎开'}else if(u<3.9){tau=lerp(1.6,0,E.inOutCubic((u-2.9)/1.0));lab='倒放重组'}else{tau=0;lab='完整'}
+  if(tau<=0){const shake=(u>=.8&&u<1.0)?(rnd(Math.floor(u*60))-.5)*4:0;c.drawImage(s.img,shake,0,W,H);
+    if(u>=.8&&u<1.0){c.strokeStyle='rgba(18,20,25,.6)';c.lineWidth=1;c.beginPath();for(const sh of s.sh){const [a,b,d]=sh.tri;c.moveTo(a[0],a[1]);c.lineTo(b[0],b[1]);c.lineTo(d[0],d[1]);c.closePath()}c.stroke();
+      c.strokeStyle=C.ink;c.globalAlpha=1-(u-.8)/.2;c.beginPath();c.arc(ix,iy,6+(u-.8)*200,0,TAU);c.stroke();c.globalAlpha=1}}
+  else for(const sh of s.sh){const tt=Math.max(0,tau-sh.dl);const e=(1-Math.exp(-1.8*tt))/1.8;const ox=sh.vx*e,oy=sh.vy*e+260*tt*tt;
+    c.save();c.translate(sh.cx+ox,sh.cy+oy);c.rotate(sh.spin*tt);c.translate(-sh.cx,-sh.cy);c.beginPath();const [a,b,d]=sh.tri;c.moveTo(a[0],a[1]);c.lineTo(b[0],b[1]);c.lineTo(d[0],d[1]);c.closePath();c.clip();c.drawImage(s.img,0,0,W,H);c.restore()}
+  txt(c,lab,W-14,22,{size:12,align:'right',color:C.ink,weight:700})};
+
+D.fractal=(c,t,dt,s)=>{const w=240,h=135;if(!s.cv){s.cv=document.createElement('canvas');s.cv.width=w;s.cv.height=h;s.cx=s.cv.getContext('2d');s.img=s.cx.createImageData(w,h)}
+  const u=t%10,zoom=3.2*Math.exp(-u*.92),cx=-0.743643887037151,cy=0.131825904205330;
+  if(GLR.draw(c,'frac',FRAC_FS,{T:t,Z:zoom,MI:80+Math.floor(u*32)})){c.fillStyle='rgba(18,20,25,.8)';c.fillRect(0,0,190,26);txt(c,`放大 ×${Math.round(3.2/zoom).toLocaleString('en')}`,10,18,{size:12,color:C.ink,weight:700});return}
+  const maxIt=60+Math.floor(u*20);const d=s.img.data,ST=[[14,15,20],[70,14,30],[255,71,87],[245,196,81],[236,232,225],[255,71,87],[70,14,30]];let o=0;
+  for(let py=0;py<h;py++){const y0=cy+(py/h-.5)*zoom*h/w;for(let px=0;px<w;px++){const x0=cx+(px/w-.5)*zoom;let zx=0,zy=0,n=0,r2=0;
+    while(n<maxIt){const xx=zx*zx,yy=zy*zy;r2=xx+yy;if(r2>256)break;zy=2*zx*zy+y0;zx=xx-yy+x0;n++}
+    if(n>=maxIt){d[o]=14;d[o+1]=15;d[o+2]=20}else{const mu=n+1-Math.log(Math.log(Math.sqrt(r2)))/Math.LN2;let q=(mu*.025+t*.03)%1;q=q<0?q+1:q;const f=q*ST.length,i0=Math.floor(f)%ST.length,i1=(i0+1)%ST.length,fr=f-Math.floor(f);
+      d[o]=lerp(ST[i0][0],ST[i1][0],fr);d[o+1]=lerp(ST[i0][1],ST[i1][1],fr);d[o+2]=lerp(ST[i0][2],ST[i1][2],fr)}
+    d[o+3]=255;o+=4}}
+  s.cx.putImageData(s.img,0,0);c.imageSmoothingEnabled=true;c.drawImage(s.cv,0,0,W,H);
+  c.fillStyle='rgba(18,20,25,.8)';c.fillRect(0,0,190,26);txt(c,`放大 ×${Math.round(3.2/zoom).toLocaleString('en')}`,10,18,{size:12,color:C.ink,weight:700})};
+
+/* ---------------- DOM demo: tilted screen ---------------- */
+const DOM={};
+DOM.device={setup(stage){stage.innerHTML='';stage.style.perspective='800px';stage.style.background='radial-gradient(120% 90% at 50% 40%,#1d2029 0%,#0d0e12 70%)';
+    const floor=document.createElement('div');floor.style.cssText='position:absolute;left:10%;right:10%;bottom:8%;height:16%;border-radius:50%;background:radial-gradient(closest-side,rgba(255,71,87,.25),rgba(0,0,0,0));filter:blur(6px)';
+    const rig=document.createElement('div');rig.style.cssText='position:absolute;left:18%;top:16%;width:64%;aspect-ratio:16/9;transform-style:preserve-3d;';
+    const dev=document.createElement('div');dev.style.cssText='position:absolute;inset:0;border:5px solid #2b2f39;border-radius:9px;background:#000;box-shadow:0 18px 40px rgba(0,0,0,.6);overflow:hidden';
+    const cv=document.createElement('canvas');cv.style.cssText='display:block;width:100%;height:100%';dev.appendChild(cv);
+    const ph=document.createElement('div');ph.style.cssText='position:absolute;right:-16%;top:22%;width:22%;aspect-ratio:9/18;border:4px solid #2b2f39;border-radius:10px;background:#FF4757;transform:translateZ(60px);box-shadow:0 14px 30px rgba(0,0,0,.6)';
+    rig.appendChild(dev);rig.appendChild(ph);stage.appendChild(floor);stage.appendChild(rig);
+    const lab=document.createElement('div');lab.textContent='画面放进斜着的屏幕里，镜头绕着它慢慢动';lab.style.cssText='position:absolute;left:0;right:0;bottom:6px;text-align:center;font-size:11px;color:rgba(236,232,225,.6)';stage.appendChild(lab);
+    return{rig,cv,ctx:cv.getContext('2d')}},
+  frame(st,t){const ry=-26+52*(.5+.5*Math.sin(t*.45)),rx=10+5*Math.sin(t*.6),z=-30+30*Math.sin(t*.35);
+    st.rig.style.transform=`translateZ(${z}px) rotateX(${rx}deg) rotateY(${ry}deg)`;
+    const r=st.cv.getBoundingClientRect?st.cv.offsetWidth:0,dpr=Math.min(2,window.devicePixelRatio||1);const w=Math.max(1,Math.round(st.cv.offsetWidth*dpr)),h=Math.max(1,Math.round(st.cv.offsetHeight*dpr));
+    if(st.cv.width!==w||st.cv.height!==h){st.cv.width=w;st.cv.height=h}st.ctx.setTransform(w/W,0,0,h/H,0,0);kinetic(st.ctx,t*1.0)}};
+
+/* ---------------- catalogue ---------------- */
+const CH=[
+ {id:'hook',code:'HOOK',name:'开场：最酷的 8 个',desc:'做视频的话，这 8 个放最前面当勾子。全部是代码现算出来的，没有一张图片，也没有一个三维模型。',items:[
+  {d:'raymarch',zh:'纯代码液态 3D',en:'SDF Raymarching',reel:'展示片第 7 段',say:'“像液态金属、水银球在空中融合”',is:'没有建模，也没有贴图。每个像素都往画面里射出一条“光线”，用公式算它先撞到什么、表面朝哪边、该多亮。几个球用“平滑合并”算在一起，所以会像液体一样融成一团。',k:['形状公式','融合软硬','灯光方向','反光与边缘光']},
+  {n:18,d:'particles',zh:'粒子聚散成形',en:'Particle Formation',reel:'展示片第 5 段',say:'“沙子聚成字”“字碎成灰飞走”',is:'先在文字形状里撒好“目标点”，每个粒子从远处被吸过去（向心力），停一会儿再炸开。每个粒子出发时间错开，就不会像整块平移。',k:['粒子数量','聚合速度','散开方向','抖动']},
+  {d:'shatter',zh:'碎裂重组',en:'Shatter & Rewind',say:'“像玻璃一样碎掉，再倒放拼回去”',is:'把画面切成很多三角形碎片，每片有自己的飞出方向、速度和自转，再加上重力。整段倒着放就是“重组”。品牌 Logo 开场很爱用。',k:['碎片数量','冲击点','爆发力','重力','倒放']},
+  {d:'fractal',zh:'分形无限放大',en:'Fractal Zoom',say:'“越放大细节越多，永远放不完”',is:'一个很短的公式，对每个点反复算，看它会不会“逃走”，逃得快慢决定颜色。边界上的细节无穷无尽，放大一百万倍还是新图案。',k:['放大位置','放大速度','配色','迭代次数（细节）']},
+  {d:'rd',zh:'反应扩散',en:'Reaction-Diffusion',say:'“像珊瑚、斑马纹、指纹自己长出来”',is:'模拟两种看不见的“化学物质”：一种扩散得快，一种会吃掉另一种。两条规则反复算，就长出和斑马、珊瑚、指纹一样的花纹。大自然里很多图案就是这么来的。',k:['喂养速度','消耗速度','初始种子']},
+  {d:'terrain',zh:'线框地形飞越',en:'Wireframe Terrain Flyover',say:'“复古未来”“像 80 年代电子乐 MV”',is:'用噪声生成一片起伏的地形，只画网格线不画表面，镜头一直往前飞，再配一个横条纹的大太阳。这就是“合成器浪潮 Synthwave”风，和复古像素风的包装很搭。',k:['地形起伏','飞行速度','网格密度','线条颜色']},
+  {d:'godrays',zh:'体积光',en:'God Rays / Volumetric Light',say:'“光从缝里透出来”“丁达尔效应”',is:'光源在物体后面，光穿过空隙，在空气里形成一道道光柱。做法是把亮的部分朝光源方向一层层放大叠加。光源一动，光柱就扫过去。',k:['光源位置','光柱长度','亮度','遮挡物形状']},
+  {d:'ascii',zh:'字符画动画',en:'ASCII Render',say:'“用符号拼出来的 3D”“黑客感”',is:'先算出 3D 物体每个位置有多亮，再用不同“密度”的符号代替亮度，. , - ~ : ; = ! * # $ @ 越往后越亮。这个转动的甜甜圈是程序员圈子里的经典。',k:['字符集','网格密度','颜色']}]},
+ {id:'feel',code:'A',name:'手感：东西怎么动',desc:'同一个东西从左走到右，“怎么走”决定了它像机器、像果冻还是像有重量的真东西。这一章大多来自迪士尼十二法则，学动画的人都会学，这里给它们配上了动画。',items:[
+  {n:1,d:'easing',zh:'缓动',en:'Easing',reel:'展示片第 4 段',say:'“动得很顺”“很机械”“停的时候有点弹”',is:'速度随时间怎么变化。匀速像机器；先慢、中间快、再慢，像有重量的真东西；回弹是冲过头一点再退回来；弹性像弹簧，抖几下才停。',k:['曲线类型','时长','回弹力度']},
+  {n:2,d:'squash',zh:'挤压拉伸',en:'Squash & Stretch',reel:'展示片第 1 段',say:'“很 Q 弹”“软软的”“像果冻”',is:'落地时压扁，飞快时拉长，但体积看起来不变。没有它，球像铁球；有了它，球像橡胶或者果冻。',k:['压扁程度','拉长程度','材质感']},
+  {n:3,d:'anticipation',zh:'预备动作',en:'Anticipation',say:'“跳之前先蹲一下”“蓄力”',is:'做一个大动作之前，先往反方向做一个小动作。观众会提前知道“要来了”，动作也显得更有力量。',k:['蓄力时长','下蹲幅度']},
+  {n:4,d:'follow',zh:'跟随与重叠',en:'Follow-through & Overlap',say:'“人停了头发还在甩”“尾巴慢半拍”',is:'主体停下以后，挂在它身上的部分（头发、衣角、尾巴、绳子）因为惯性还要继续动一会儿，各部分停下的时间错开。',k:['延迟','晃动次数','阻尼']},
+  {n:5,d:'stagger',zh:'错峰入场',en:'Stagger / Offset',say:'“一个接一个像多米诺”“像波浪一样出来”',is:'一群元素做同一个动作，但每个晚一点点出发。顺序可以从角落、从中心、按随机。MG 里最常用、最显高级的技巧之一。',k:['间隔时间','顺序方向','单个动作时长']},
+  {n:6,d:'spring',zh:'弹簧物理',en:'Spring Physics',say:'“追着跑”“跟手”“晃悠悠地停下”',is:'不规定动画曲线，而是假装物体被弹簧拴在目标上，让物理自己算。硬弹簧利落，软弹簧晃荡。UI 动效里很常见。',k:['硬度 Stiffness','阻尼 Damping']},
+  {n:7,d:'trail',zh:'拖尾与运动模糊',en:'Trail / Motion Blur',say:'“很快，有残影”“像流星”',is:'快速移动的东西留下一串渐淡的影子。真实摄像机拍快速物体就是糊的，加上它速度感一下就出来了。',k:['拖尾长度','衰减快慢']},
+  {n:8,d:'beat',zh:'节拍卡点',en:'Beat Sync',reel:'展示片的配乐要求',say:'“卡点”“踩着鼓点切”',is:'画面变化对准音乐的拍子。120 BPM 就是一拍 0.5 秒，四拍一小节，第一拍最重，大动作、转场放在这一拍上。',k:['BPM','重拍位置','留白']}]},
+ {id:'shape',code:'B',name:'形状与线',desc:'不靠图片，只靠几何形状和线条本身的变化来做动画。',items:[
+  {n:9,d:'trim',zh:'路径描边动画',en:'Trim Path / Stroke Draw-on',say:'“线自己画出来”“像有人在描”',is:'一条线有起点和终点两个位置。终点先往前跑，线就“画出来”；起点再追上去，线就“收回去”。签名、图标、地图路线都用它。',k:['起点 Start','终点 End','偏移 Offset']},
+  {n:10,d:'morph',zh:'形状变形',en:'Shape Morph',reel:'展示片第 3 段',say:'“圆变成星星”“一个东西融化成另一个”',is:'两个形状用同样数量的点描出来，每个点从 A 的位置滑到 B 的对应位置。点对得好就顺滑，对不好就会扭成麻花。',k:['点的对应关系','缓动','旋转']},
+  {n:11,d:'mask',zh:'遮罩揭示',en:'Mask Reveal / Wipe',say:'“字从一条线后面冒出来”“被擦出来”',is:'内容一直在那里，只是被一块看不见的“遮罩”挡住，遮罩移开它就露出来。字幕入场、标题出现最常用。',k:['遮罩方向','速度','前导色条']},
+  {n:12,d:'metaball',zh:'液态融合',en:'Metaballs',reel:'展示片第 7 段',say:'“像水银粘在一起又分开”“像熔岩灯”',is:'每个球周围有一圈看不见的“浓度”，靠近时浓度叠加，超过一条线就画成实心，所以两个球会像液体一样拉丝、融合。',k:['球的大小','阈值（粘稠度）','移动速度']},
+  {n:13,d:'harmono',zh:'谐波线',en:'Harmonograph / Lissajous',reel:'展示片第 11 段',say:'“像丝带”“像示波器图案”“万花尺”',is:'把几条正弦波（来回摆动）叠在一起，用一支笔画出轨迹。频率差一点点，图案就慢慢扭动变化。',k:['波的频率','振幅','衰减']},
+  {n:14,d:'tree',zh:'程序化生长',en:'Procedural Growth',say:'“像树枝一样长出来”“像血管/闪电/珊瑚”',is:'不画树，而是写一条规则：每根枝分成两根，短一点、歪一点。规则重复几次，复杂的形状自己长出来。',k:['分叉角度','缩短比例','层数','随机度']},
+  {d:'kaleido',zh:'万花筒',en:'Kaleidoscope / Mirror Symmetry',say:'“对称的花纹一直在变”“像曼陀罗”',is:'只画一小片扇形，然后旋转、镜像复制 16 份。扇形里的东西怎么乱动，整体永远是对称的。',k:['对称份数','镜像','扇形里的内容']}]},
+ {id:'type',code:'C',name:'文字',desc:'在 MG 里，字本身就是主角。动的不只是位置，还有粗细、间距和高低。',items:[
+  {n:15,d:'kinetic',zh:'动态排版',en:'Kinetic Typography',reel:'展示片第 2 段',say:'“字一个个蹦出来”“字会呼吸”',is:'让文字逐字入场，同时改变字重（笔画粗细）、字距（字和字的间隔）和基线（字的上下高低）。画面底部的数字就是这三个旋钮的实时值。',k:['字重','字距','基线偏移','逐字间隔']},
+  {n:16,d:'scramble',zh:'乱码解码',en:'Text Scramble / Decode',say:'“像黑客电影里的字”“字在跳，然后定住”',is:'每个字的位置先快速闪过随机字符，到点后“锁定”成正确的字，从左到右依次锁定。科技感标题常用。',k:['乱码字符池','锁定间隔','乱跳速度']},
+  {n:17,d:'textpath',zh:'路径文字',en:'Text on Path',say:'“字沿着波浪线跑”“像丝带上的字”',is:'文字排在一条曲线上，每个字跟着曲线的方向转。曲线本身也可以动。',k:['路径形状','流动速度','字间距']}]},
+ {id:'particle',code:'D',name:'粒子、场与物理',desc:'成百上千个小点，每个都很简单，但合在一起像烟、像沙、像礼花。“场”就是一张看不见的地图，告诉每个点往哪走。物理模拟则让东西像真的一样受力。粒子聚成字那一张已经放到开场章节里。',items:[
+  {n:19,d:'flow',zh:'噪声流场',en:'Flow Field / Noise Field',say:'“像烟”“像风吹过的丝线”“像头发”',is:'画面每个位置都有一个风向，风向用“噪声”生成，所以是平滑、自然、不重复的。粒子顺着风向走，留下的轨迹就是这些丝线。',k:['噪声尺度（纹理粗细）','速度','拖尾长短']},
+  {n:20,d:'burst',zh:'爆散与重力',en:'Burst & Gravity',say:'“礼花炸开”“纸屑撒下来”',is:'每个碎片带着向外的初速度出发，然后受重力往下掉、受空气阻力减速，同时自己翻转。真实的抛物线比“直线飞出去”自然得多。',k:['爆发力','重力','阻力','自转']},
+  {n:21,d:'repel',zh:'吸引与排斥',en:'Attract / Repel Field',say:'“手指划过，点点都躲开”“像鱼群”',is:'一个看不见的力场，越靠近中心推得越远。交互网页、发布会背景、科技感 Logo 都爱用。',k:['作用半径','力的强弱','回弹']},
+  {d:'cloth',zh:'布料模拟',en:'Cloth Simulation',say:'“旗子在风里飘”“布垂下来、被风掀起来”',is:'布被当成一张由很多点和弹簧连起来的网，每个点受重力和风，弹簧拉着它们不散开。明暗是根据褶皱的方向算出来的。',k:['风力','重力','布的硬度','固定点']}]},
+ {id:'space',code:'E',name:'空间与镜头',desc:'在平面里造出“深度”，以及镜头怎么在空间里走。{#camera} 对你写视频提示词也直接有用。',items:[
+  {n:22,d:'persp',zh:'透视与正交',en:'Perspective vs Orthographic',reel:'展示片第 6 段',say:'“有纵深感”/“像工程图，扁扁的”',is:'透视是近大远小，像人眼和摄像机；正交是远近一样大，像建筑图纸和很多科技风插画。动画会在两种之间来回切。',k:['透视强度（焦距）','视角']},
+  {n:23,d:'cloud',zh:'点云',en:'Point Cloud',reel:'展示片第 6 段',say:'“由星尘组成的形状”“像扫描出来的”',is:'只画三维物体表面上的点，不画面。离得近的点更亮更大，转起来立体感很强，有一种数据、扫描的科技味。',k:['点的数量','点的大小','旋转','透视']},
+  {n:24,d:'iso',zh:'等距视角',en:'Isometric',reel:'展示片第 10 段',say:'“像纪念碑谷”“像小小的城市模型”',is:'斜 45° 俯视，而且没有近大远小。适合讲“系统”“城市”“流程”，信息图里很常见。这里的楼按对角线错峰长出来（{#stagger}）。',k:['格子大小','高度','生长顺序']},
+  {n:25,d:'parallax',zh:'视差',en:'Parallax',say:'“有层次的横移”“像坐火车看窗外”',is:'把画面拆成远、中、近好几层，远的慢、近的快。几张平面图就能做出很强的纵深感。',k:['层数','每层速度差']},
+  {n:26,d:'zoom',zh:'无限缩放',en:'Infinite Zoom / Droste',reel:'展示片第 9 段',say:'“一直往里钻”“像两面镜子对照”',is:'画面里套着一个更小的自己，镜头一直推进去，推到下一层时刚好和上一层一模一样，于是可以无限循环。',k:['每层缩小比例','每层旋转','速度']},
+  {n:27,d:'dof',zh:'景深与拉焦',en:'Depth of Field / Focus Pull',say:'“背景虚掉了”“焦点从前面移到后面”',is:'只有一段距离是清楚的，比它近或远的都会糊。焦点移动叫拉焦，用来带着观众的眼睛从一个东西看向另一个。',k:['焦点位置','虚化程度（光圈）']},
+  {n:28,d:'camera',zh:'镜头运动',en:'Truck · Pan · Dolly · Zoom',say:'“镜头往前推”“镜头横着走”',is:'推和变焦都会让东西变大，横移和摇都会让画面横着动，但空间感完全不同。看红色柱子和后面树的关系：前景和背景变化不一样，就是机位真的在动。',k:['移','摇','推','变焦']}]},
+ {id:'texture',code:'F',name:'质感',desc:'同样的画面，表面加一层“材质”就换了气质：赛博、复古、胶片、印刷。',items:[
+  {n:29,d:'glitch',zh:'故障艺术',en:'Glitch',reel:'展示片第 8 段',say:'“像信号坏了”“画面撕裂”“赛博感”',is:'三件事叠在一起：像素偏移（一条条横着错开）、色彩分离（红蓝两层错位）、扫描线（细横条纹，像老显示器）。要一阵一阵地出现，常开会很吵。',k:['强度','频率','色彩分离距离']},
+  {n:30,d:'glow',zh:'辉光',en:'Glow / Bloom',say:'“霓虹灯”“发光的线”',is:'在线条外面叠几层越来越模糊的同色光晕，中间再加一条更亮的芯。发光感来自“芯亮、晕软”。',k:['光晕大小','亮度','芯的颜色']},
+  {n:31,d:'halftone',zh:'半调网点',en:'Halftone',say:'“像报纸印刷”“波普风”',is:'用大小不同的圆点表示明暗：亮处点小，暗处点大（这里反过来用点表示亮）。远看是渐变，近看是点。',k:['网点间距','网点形状','角度']},
+  {n:32,d:'pixel',zh:'像素化与抖动',en:'Pixelation & Dithering',say:'“复古游戏风”“8-bit”“像素风”',is:'把画面变成大方块，只用几种颜色。中间的过渡色用“抖动”的棋盘格假装出来。现在很流行的“复古像素大标题”就是这一路。',k:['像素尺寸','颜色数量','抖动图案']},
+  {n:33,d:'grain',zh:'胶片颗粒与暗角',en:'Film Grain & Vignette',say:'“有电影感”“不那么数码”“有温度”',is:'颗粒是每帧都在变的细小噪点；暗角是四周压暗、中心亮。再加一点暖色。程序化的画面太干净，这两样能马上去掉“塑料感”。',k:['颗粒强度','颗粒大小','暗角范围','色调']}]},
+ {id:'transition',code:'G',name:'转场',desc:'从一个画面到下一个画面的方式。好的转场让观众注意不到“切了”。',items:[
+  {n:34,d:'matchcut',zh:'形变转场',en:'Match Cut / Shape Transition',reel:'展示片收尾',say:'“开头的东西最后变成了结尾的东西”',is:'用一个形状把两个画面接起来：球落地变成句号，圆变成眼睛，线变成地平线。前后呼应，观众会觉得“设计过”。',k:['衔接用的形状','变形时机']},
+  {n:35,d:'iris',zh:'形状擦除',en:'Iris / Shape Wipe',say:'“画面从一个点圆圆地扩开”',is:'新画面通过一个不断变大的形状（圆、菱形、Logo 形状）露出来。从画面里某个重点位置开始扩，会比从正中间扩更有意义。',k:['形状','扩散起点','速度']},
+  {n:36,d:'push',zh:'推挤转场',en:'Push / Slide',say:'“新画面把旧画面推走”',is:'新旧画面像贴在一条胶片上一起滑过去。中间最快、两头慢，最快时加一点残影（{#trail}），会很利落。',k:['方向','曲线','残影']},
+  {n:37,d:'montage',zh:'快切蒙太奇',en:'Flash Montage',reel:'展示片第 12 段',say:'“越切越快”“前面的画面闪回一遍”',is:'把前面出现过的画面按节拍快速切换，间隔越来越短，最后落在 Logo 上。每一刀加一帧白闪会更有冲击力。',k:['起始间隔','加速度','白闪']}]},
+ {id:'layout',code:'H',name:'版式与包装',desc:'画面不讲故事，但决定它看起来“专业不专业”。很多 MG 展示片显得高级，一半靠这一章。',items:[
+  {n:38,d:'swiss',zh:'瑞士网格',en:'Swiss Grid',reel:'展示片第 8 段',say:'“很整齐”“很设计”“很高级的排版”',is:'先把画面分成 12 根看不见的竖栏，所有元素的边都对齐在栏上。粉色竖条就是栏，平时不显示。东西多也不会乱。',k:['栏数','栏间距','对齐方式']},
+  {n:39,d:'hud',zh:'界面装饰',en:'HUD / UI Chrome',reel:'展示片每段的角标',say:'“像在专业软件里”“像监视器画面”',is:'四个角的框、编号标题、走动的时间码、刻度尺、坐标读数、REC 红点。它们不讲内容，但让画面像“工作中的专业设备”。',k:['角标','时间码','刻度','数据读数']},
+  {n:40,d:'device',dom:true,zh:'斜置屏幕包装',en:'Device Mockup in 3D',say:'“画面放在斜着的显示器里，镜头会动”',is:'把素材贴进一块有边框的屏幕，屏幕在三维空间里斜放，镜头慢慢绕着它转。科技类视频很爱用这种包装，屏幕一斜，镜头就能动起来。',k:['倾斜角度','镜头路径','反光/阴影']},
+  {d:'audioviz',zh:'声音可视化',en:'Audio Visualizer',say:'“跟着音乐跳的圈”“音浪”',is:'把声音拆成从低到高的很多个频率，每个频率现在有多响，就画多长的柱子。鼓点一来，低音那几根一起跳。（这里用的是模拟出来的声音。）',k:['柱子数量','排列方式','灵敏度']}]}
+];
+
+/* ---------------- build ---------------- */
+const main=document.getElementById('main'),nav=document.getElementById('chapters');const cards=[];
+let CNT=0;const NUM={};for(const ch of CH)for(const it of ch.items){it.n=++CNT;NUM[it.d]=it.n}
+const REF=s=>s.replace(/\{#(\w+)\}/g,(m,k)=>'#'+String(NUM[k]).padStart(2,'0'));
+for(const id of ['lead','howto']){const el=document.getElementById(id);if(el)el.innerHTML=REF(el.innerHTML)}
+for(const ch of CH){const a=document.createElement('a');a.href='#'+ch.id;a.textContent=`${ch.code} ${ch.name.split('：')[0]}`;nav.appendChild(a);
+  const sec=document.createElement('section');sec.className='ch';sec.id=ch.id;
+  sec.innerHTML=`<div class="ch-head"><span class="ch-code">CHAPTER ${ch.code} · #${String(ch.items[0].n).padStart(2,'0')}–${String(ch.items[ch.items.length-1].n).padStart(2,'0')}</span><h2>${ch.name}</h2><p>${REF(ch.desc)}</p></div><div class="grid"></div>`;
+  const grid=sec.querySelector('.grid');
+  for(const it of ch.items){const card=document.createElement('article');card.className='card';card.dataset.reel=it.reel?'1':'0';card.id='n'+it.n;
+    card.innerHTML=`<div class="stage" role="button" tabindex="0" aria-label="#${it.n} ${it.zh}，点击暂停或播放"></div>
+      <div class="body"><div class="name"><span class="code">#${String(it.n).padStart(2,'0')}</span><h3>${it.zh}</h3><span class="en">${it.en}</span>${it.reel?`<span class="reel">${it.reel}</span>`:''}</div>
+      <p class="say">${it.say}</p><p class="is">${REF(it.is)}</p><div class="knobs"><span class="k-label">旋钮</span>${it.k.map(x=>`<span>${x}</span>`).join('')}</div></div>`;
+    grid.appendChild(card);const stage=card.querySelector('.stage');
+    const k={it,card,stage,t:0,s:{},paused:false,visible:false,dom:!!it.dom};
+    if(k.dom){k.st=DOM[it.d].setup(stage)}
+    else{k.cv=document.createElement('canvas');stage.insertBefore(k.cv,stage.firstChild);k.ctx=k.cv.getContext('2d')}
+    k.badge=document.createElement('span');k.badge.className='paused';k.badge.textContent='已暂停';k.badge.hidden=true;stage.appendChild(k.badge);
+    const toggle=()=>{k.paused=!k.paused;k.badge.hidden=!k.paused;if(!k.paused&&globalPause){setGlobalPause(false)}};
+    stage.addEventListener('click',toggle);stage.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();toggle()}});
+    cards.push(k)}
+  main.appendChild(sec)}
+
+function render(k,dt){try{
+  if(k.dom){DOM[k.it.d].frame(k.st,k.t);return}
+  const dpr=Math.min(2,window.devicePixelRatio||1),w=Math.max(1,Math.round(k.cv.clientWidth*dpr)),h=Math.max(1,Math.round(k.cv.clientHeight*dpr));
+  if(k.cv.width!==w||k.cv.height!==h){k.cv.width=w;k.cv.height=h;k.s={}}
+  SC=w/W;k.ctx.setTransform(w/W,0,0,h/H,0,0);k.ctx.globalAlpha=1;k.ctx.globalCompositeOperation='source-over';D[k.it.d](k.ctx,k.t,dt,k.s)}catch(e){console.error('demo',k.it.n,e)}}
+
+const reduce=window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+let speed=1,globalPause=!!reduce,last=performance.now();
+const pauseBtn=document.getElementById('pauseAll');
+function setGlobalPause(v){globalPause=v;pauseBtn.setAttribute('aria-pressed',String(v));pauseBtn.textContent=v?'全部播放':'全部暂停'}
+setGlobalPause(globalPause);
+pauseBtn.addEventListener('click',()=>setGlobalPause(!globalPause));
+document.querySelectorAll('[data-speed]').forEach(b=>b.addEventListener('click',()=>{speed=+b.dataset.speed;document.querySelectorAll('[data-speed]').forEach(x=>x.setAttribute('aria-pressed',String(x===b)))}));
+const reelBtn=document.getElementById('reelOnly');
+reelBtn.addEventListener('click',()=>{const on=reelBtn.getAttribute('aria-pressed')!=='true';reelBtn.setAttribute('aria-pressed',String(on));
+  for(const k of cards)k.card.hidden=on&&k.card.dataset.reel!=='1';
+  document.querySelectorAll('section.ch').forEach(sec=>{sec.hidden=on&&!sec.querySelector('.card[data-reel="1"]')})});
+
+const io=new IntersectionObserver(es=>{for(const e of es){const k=cards.find(c=>c.stage===e.target);if(k)k.visible=e.isIntersecting}},{rootMargin:'100px'});
+cards.forEach(k=>io.observe(k.stage));
+
+function start(){
+  cards.forEach(k=>{k.t=1.3+(k.it.n%5)*.37;render(k,1/60)});
+  function loop(now){const dt=Math.min(.05,(now-last)/1000);last=now;
+    if(!globalPause)for(const k of cards){if(!k.visible||k.paused||k.card.hidden)continue;const d=dt*speed;k.t+=d;render(k,d)}
+    requestAnimationFrame(loop)}
+  requestAnimationFrame(t=>{last=t;loop(t)})}
+let started=false;const go=()=>{if(!started){started=true;start()}};
+(document.fonts&&document.fonts.ready?Promise.race([document.fonts.ready,new Promise(r=>setTimeout(r,1500))]):Promise.resolve()).then(go);
+window.addEventListener('resize',()=>{if(globalPause)cards.forEach(k=>render(k,0))});
+if(location.hash){const el=document.querySelector(location.hash.replace(/[^#\w-]/g,''));if(el)setTimeout(()=>el.scrollIntoView(),50)}
+})();
+</script>
+
+</body>
+</html>
