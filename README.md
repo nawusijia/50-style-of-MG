@@ -41,6 +41,7 @@
 - [case/PROMPT.md](case/PROMPT.md)：整体提示词。把文字换成你自己的，复制给会写代码的 AI 就能复现。
 - [case/index.html](case/index.html)：一个没看过任何上下文的 AI，只读这段提示词做出来的成品，打开点播放。
 - [case/case.mp4](case/case.mp4)：导出的视频。
+- [case/versions/](case/versions/)：提示词迭代史。同一个片头改了几轮提示词，每一版都交给新的 AI 从零做，再盲评打分，看提示词写得更准，片子怎么一步步变好。
 
 ## 出品
 
