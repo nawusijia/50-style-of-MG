@@ -1,912 +1,705 @@
 #!/usr/bin/env python3
-"""娜乌斯嘉AI · 16 秒频道片头 —— 配乐与音效（NumPy / SciPy 合成）
+"""Original score + sound design for the 16 s 娜乌斯嘉AI channel ident.
 
-输出 music.wav：48 kHz、16-bit、立体声、正好 16.0 秒，约 -14 LUFS，真峰值 <= -1.2 dBTP。
-120 BPM，4/4，A 小调 Am–F–C–G。所有时间点与 index.html 的画面动作一一对应。
+120 BPM, 4/4, A minor, Am–F–C–G.  48 kHz / 16-bit / stereo / exactly 16.0 s.
+Every sound effect is placed on the frame of its visual action in index.html
+(the timing constants below mirror the ones in the page).
+
+    python3 gen_audio.py            -> writes music.wav next to this script
+    STEMS=dir python3 gen_audio.py  -> also writes music/sfx stems (for analysis)
 """
 import os
-import sys
 import numpy as np
 from scipy import signal
+from scipy.ndimage import maximum_filter1d, minimum_filter1d, uniform_filter1d
 
 SR = 48000
 DUR = 16.0
 N = int(SR * DUR)
-BEAT = 0.5
-RNG = np.random.default_rng(20261027)
-OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'music.wav')
+HERE = os.path.dirname(os.path.abspath(__file__))
+rng = np.random.default_rng(20261027)
 
-SILENCES = [(3.75, 4.0), (14.75, 15.0)]          # 全片仅有的两次静音留白
+# ----------------------------------------------------------------- timeline (mirrors index.html)
+SWEEP0, SWEEPD = 4.8, 0.3
+LAND = [9.0, 9.5, 10.0, 10.5, 11.0, 11.5]
+PERIOD_T = 12.0
+SUB_LOCK0, SUB_LOCKD, SUB_N = 13.08, 0.045, 11
+GLITCH1 = (8.0, 8.0 + 11 / 60)
+GLITCH2 = (8.0 + 13 / 60, 8.0 + 23 / 60)
+SILENCES = [(3.75, 4.0), (14.75, 15.0)]
 
 
-# ------------------------------------------------------------------ 基础工具
-def midi(m):
-    return 440.0 * 2 ** ((m - 69) / 12.0)
+def S(t):
+    return int(round(t * SR))
 
 
-def tarr(n):
+def tt(n):
     return np.arange(n) / SR
 
 
-def fade_edges(x, a_ms=3.0, r_ms=4.0):
-    """所有声音的起音 2–5 ms 淡入、尾部淡出，杜绝咔哒声"""
-    n = len(x)
-    a = min(n, max(1, int(SR * a_ms / 1000)))
-    r = min(n, max(1, int(SR * r_ms / 1000)))
+def mtof(m):
+    return 440.0 * 2 ** ((np.asarray(m, float) - 69) / 12)
+
+
+# ----------------------------------------------------------------- dsp helpers
+def fade_in(x, ms=3.0):
+    n = min(len(x) if x.ndim == 1 else x.shape[-1], max(2, int(SR * ms / 1000)))
+    w = 0.5 - 0.5 * np.cos(np.linspace(0, np.pi, n))
     x = x.copy()
-    x[:a] *= np.sin(np.linspace(0, np.pi / 2, a)) ** 2
-    x[n - r:] *= np.cos(np.linspace(0, np.pi / 2, r)) ** 2
+    x[..., :n] *= w
     return x
 
 
-def place(bus, x, t0, gain=1.0, pan=0.0):
-    """把单声道 / 立体声片段放到总线上（等功率声像）"""
-    i0 = int(round(t0 * SR))
-    if x.ndim == 1:
-        th = (pan + 1) * np.pi / 4
-        x = np.stack([x * np.cos(th), x * np.sin(th)], axis=1) * np.sqrt(2)
-    if i0 < 0:
-        x = x[-i0:]
-        i0 = 0
-    n = min(len(x), N - i0)
-    if n > 0:
-        bus[i0:i0 + n] += x[:n] * gain
+def fade_out(x, ms=6.0):
+    n = min(x.shape[-1], max(2, int(SR * ms / 1000)))
+    w = 0.5 + 0.5 * np.cos(np.linspace(0, np.pi, n))
+    x = x.copy()
+    x[..., -n:] *= w
+    return x
 
 
-def blep_osc(freq, kind='saw', phase0=0.0):
-    """带 PolyBLEP 抗混叠的锯齿 / 方波，freq 可以是逐采样数组"""
-    freq = np.broadcast_to(np.asarray(freq, dtype=float), np.shape(freq) if np.ndim(freq) else (1,)).astype(float)
-    dt = freq / SR
-    ph = (np.cumsum(dt) + phase0) % 1.0
-
-    def blep(p, d):
-        y = np.zeros_like(p)
-        m = p < d
-        tt = p[m] / d[m]
-        y[m] = tt + tt - tt * tt - 1
-        m2 = p > 1 - d
-        tt = (p[m2] - 1) / d[m2]
-        y[m2] = tt * tt + tt + tt + 1
-        return y
-
-    saw = 2 * ph - 1 - blep(ph, dt)
-    if kind == 'saw':
-        return saw
-    ph2 = (ph + 0.5) % 1.0
-    saw2 = 2 * ph2 - 1 - blep(ph2, dt)
-    return saw - saw2  # 方波
-
-
-def sine_sweep(f, n=None):
-    f = np.asarray(f, dtype=float)
-    return np.sin(2 * np.pi * np.cumsum(f) / SR)
-
-
-def sos_lp(f, order=2):
-    return signal.butter(order, min(f, SR * 0.45), 'low', fs=SR, output='sos')
-
-
-def sos_hp(f, order=2):
-    return signal.butter(order, f, 'high', fs=SR, output='sos')
-
-
-def sos_bp(lo, hi, order=2):
-    return signal.butter(order, [lo, min(hi, SR * 0.45)], 'band', fs=SR, output='sos')
-
-
-def filt(sos, x):
-    return signal.sosfilt(sos, x, axis=0)
-
-
-def sweep_lp(x, f_start, f_end, block=256, curve='exp'):
-    """时变低通（分块更新系数，保持状态）"""
-    y = np.zeros_like(x)
-    nb = int(np.ceil(len(x) / block))
-    zi = None
-    for b in range(nb):
-        u = b / max(1, nb - 1)
-        fc = f_start * (f_end / f_start) ** u if curve == 'exp' else f_start + (f_end - f_start) * u
-        sos = sos_lp(fc, 2)
-        if zi is None:
-            zi = np.zeros((sos.shape[0], 2))
-        seg = x[b * block:(b + 1) * block]
-        y[b * block:(b + 1) * block], zi = signal.sosfilt(sos, seg, zi=zi)
-    return y
-
-
-def sweep_bp(x, f_start, f_end, q=1.2, block=256):
-    y = np.zeros_like(x)
-    nb = int(np.ceil(len(x) / block))
-    zi = np.zeros((1, 2))
-    for b in range(nb):
-        u = b / max(1, nb - 1)
-        fc = f_start * (f_end / f_start) ** u
-        bw = fc / q
-        sos = signal.butter(1, [max(20, fc - bw / 2), min(SR * 0.45, fc + bw / 2)], 'band', fs=SR, output='sos')
-        seg = x[b * block:(b + 1) * block]
-        y[b * block:(b + 1) * block], zi = signal.sosfilt(sos, seg, zi=zi)
-    return y
-
-
-def env_exp(n, tau, attack=0.003):
-    tt = tarr(n)
-    e = np.exp(-tt / tau)
-    a = int(attack * SR)
-    if a > 0:
-        e[:a] *= np.linspace(0, 1, a)
+def env_ad(n, att, tau):
+    t = tt(n)
+    e = np.exp(-t / tau)
+    a = max(1, int(att * SR))
+    e[:a] *= 0.5 - 0.5 * np.cos(np.linspace(0, np.pi, a))
     return e
 
 
-def norm(x, peak=1.0):
-    m = np.max(np.abs(x))
-    return x * (peak / m) if m > 0 else x
+def sos(kind, f, order=2):
+    return signal.butter(order, f, btype=kind, fs=SR, output='sos')
 
 
-def make_ir(sec=1.6, tau=0.45, lp_end=2500, seed=3):
-    r = np.random.default_rng(seed)
-    n = int(sec * SR)
-    tt = tarr(n)
-    ir = r.standard_normal((n, 2)) * np.exp(-tt / tau)[:, None]
-    ir[:, 0] = sweep_lp(ir[:, 0], 9000, lp_end, block=1024)
-    ir[:, 1] = sweep_lp(ir[:, 1], 9000, lp_end, block=1024)
-    ir[: int(0.012 * SR)] *= np.linspace(0, 1, int(0.012 * SR))[:, None]
-    return ir / np.sqrt(np.sum(ir ** 2) / 2)
+def filt(x, kind, f, order=2):
+    return signal.sosfilt(sos(kind, f, order), x, axis=-1)
 
 
-IR = make_ir()
+def _blep(p, dt):
+    y = np.zeros_like(p)
+    m = p < dt
+    x = p[m] / dt[m]
+    y[m] = x + x - x * x - 1
+    m = p > 1 - dt
+    x = (p[m] - 1) / dt[m]
+    y[m] = x * x + x + x + 1
+    return y
 
 
-def reverb(x, wet=0.2, ir=IR):
-    if x.ndim == 1:
-        x = np.stack([x, x], axis=1)
-    y = np.stack([signal.fftconvolve(x[:, c], ir[:, c])[: len(x)] for c in range(2)], axis=1)
-    return x + y * wet
+def _f(f, n):
+    f = np.asarray(f, float)
+    return np.full(n, float(f)) if f.ndim == 0 else f[:n]
 
 
-# ------------------------------------------------------------------ 和声
-BARS = ['Am', 'F', 'C', 'G', 'Am', 'F', 'C', 'G']
-ROOT = {'Am': 33, 'F': 29, 'C': 36, 'G': 31}               # 贝斯根音（A1 F1 C2 G1）
-PAD = {'Am': [57, 60, 64, 69], 'F': [53, 57, 60, 64], 'C': [55, 60, 64, 67], 'G': [55, 59, 62, 67]}
-ARPT = {'Am': [57, 60, 64, 69, 72], 'F': [53, 57, 60, 65, 69], 'C': [55, 60, 64, 67, 72], 'G': [55, 59, 62, 67, 71]}
+def saw(f, n, ph0=0.0):
+    f = _f(f, n)
+    dt = f / SR
+    p = (ph0 + np.cumsum(dt)) % 1.0
+    return 2 * p - 1 - _blep(p, dt)
 
 
-def music_stop(t):
-    """音乐声部在静音段与 15 秒后的可用性"""
-    for a, b in SILENCES:
-        if a <= t < b:
-            return False
-    return t < 14.75
+def square(f, n, duty=0.5, ph0=0.0):
+    f = _f(f, n)
+    dt = f / SR
+    p = (ph0 + np.cumsum(dt)) % 1.0
+    return np.where(p < duty, 1.0, -1.0) + _blep(p, dt) - _blep((p + 1 - duty) % 1.0, dt)
 
 
-# ------------------------------------------------------------------ 音乐声部
-def make_pad():
-    out = np.zeros((N, 2))
-    for b, ch in enumerate(BARS):
-        t0 = b * 2.0
-        if t0 >= 14.75:
+def sine(f, n, ph0=0.0):
+    f = _f(f, n)
+    return np.sin(2 * np.pi * (ph0 + np.cumsum(f) / SR))
+
+
+def noise(n):
+    return rng.standard_normal(n)
+
+
+def svf_lp(x, fc):
+    """time-varying 2-pole (TPT state-variable) low-pass; fc per sample"""
+    y = np.zeros_like(x)
+    g = np.tan(np.pi * np.clip(fc, 20, SR * 0.45) / SR)
+    k = 1.4
+    ic1 = ic2 = 0.0
+    for i in range(len(x)):
+        gi = g[i]
+        a1 = 1 / (1 + gi * (gi + k))
+        v3 = x[i] - ic2
+        v1 = a1 * ic1 + gi * a1 * v3
+        v2 = ic2 + gi * v1
+        ic1 = 2 * v1 - ic1
+        ic2 = 2 * v2 - ic2
+        y[i] = v2
+    return y
+
+
+def svf_bp(x, fc, q=2.0):
+    y = np.zeros_like(x)
+    g = np.tan(np.pi * np.clip(fc, 20, SR * 0.45) / SR)
+    k = 1 / q
+    ic1 = ic2 = 0.0
+    for i in range(len(x)):
+        gi = g[i]
+        a1 = 1 / (1 + gi * (gi + k))
+        v3 = x[i] - ic2
+        v1 = a1 * ic1 + gi * a1 * v3
+        v2 = ic2 + gi * v1
+        ic1 = 2 * v1 - ic1
+        ic2 = 2 * v2 - ic2
+        y[i] = v1
+    return y
+
+
+def st(x, pan=0.0, width=0.0):
+    """mono -> stereo with constant-power pan"""
+    if x.ndim == 2:
+        return x
+    a = (pan + 1) * np.pi / 4
+    return np.stack([x * np.cos(a) * 1.4142, x * np.sin(a) * 1.4142])
+
+
+def add(buf, x, t0, gain=1.0, pan=0.0):
+    x = st(x, pan)
+    i0 = S(t0)
+    if i0 < 0:
+        x = x[:, -i0:]
+        i0 = 0
+    n = min(x.shape[1], N - i0)
+    if n > 0:
+        buf[:, i0:i0 + n] += gain * x[:, :n]
+
+
+def addm(buf, x, t0, gain=1.0, pan=0.0):
+    """music add: anything that starts before a silent half-beat is cut (10 ms fade) at its start,
+    so no tail resumes after the silence"""
+    x = st(x, pan)
+    for a0, _ in SILENCES:
+        if t0 < a0:
+            lim = S(a0) - S(t0)
+            if lim < x.shape[1]:
+                x = x[:, :max(lim, 2)].copy()
+                r = min(S(0.01), x.shape[1])
+                x[:, -r:] *= np.linspace(1, 0, r)
             break
-        dur = min(2.0, 14.75 - t0) + 0.35
-        if t0 < 3.75 <= t0 + dur:
-            dur = 3.75 - t0
-        n = int(dur * SR)
-        tt = tarr(n)
-        att = 0.05 if t0 in (4.0, 8.0) else 0.22
-        e = np.minimum(1, tt / att) * np.minimum(1, np.maximum(0, (dur - tt) / 0.3))
-        e = e ** 1.5
-        sig = np.zeros((n, 2))
-        for k, m in enumerate(PAD[ch]):
-            for d, pan in ((-0.09, -0.7), (0.0, 0.0), (0.085, 0.7)):
-                f = midi(m) * 2 ** (d / 12) * (1 + 0.0015 * np.sin(2 * np.pi * (0.3 + 0.1 * k) * tt))
-                s = blep_osc(f, 'saw', phase0=RNG.random())
-                th = (pan + 1) * np.pi / 4
-                sig[:, 0] += s * np.cos(th)
-                sig[:, 1] += s * np.sin(th)
-        sig *= e[:, None]
-        place(out, sig, t0)
-    muff = filt(sos_lp(420, 2), out)
-    opn = filt(sos_lp(1500, 2), out)
-    tt = tarr(N)
-    k = (tt >= 4.0).astype(float)
-    pad = muff * (1 - k)[:, None] * 0.7 + opn * k[:, None]
-    # 侧链“泵”感：4 秒后跟着底鼓呼吸
-    pump = np.ones(N)
-    for i in range(32):
-        tb = i * BEAT
-        if tb < 4.0 or tb >= 14.75:
+    add(buf, x, t0, gain)
+
+
+def norm(x):
+    m = np.max(np.abs(x))
+    return x / m if m > 0 else x
+
+
+# ----------------------------------------------------------------- music
+mus_pad = np.zeros((2, N))
+mus_arp = np.zeros((2, N))
+mus_bass = np.zeros((2, N))
+mus_drm = np.zeros((2, N))
+
+PROG = ['Am', 'F', 'C', 'G', 'Am', 'F', 'C', 'G']
+PAD = {'Am': [57, 60, 64], 'F': [57, 60, 65], 'C': [55, 60, 64], 'G': [55, 59, 62]}
+ROOT = {'Am': 33, 'F': 29, 'C': 36, 'G': 31}
+ARP = {'Am': [69, 72, 76, 81], 'F': [69, 72, 77, 81], 'C': [67, 72, 76, 79], 'G': [67, 71, 74, 79]}
+ARP_PAT = [0, 2, 3, 2, 1, 2, 3, 2, 0, 2, 3, 2, 1, 3, 2, 1]
+
+
+def pad_chord(notes, dur, att=0.06, rel=0.35):
+    n = S(dur + rel)
+    L = np.zeros(n)
+    R = np.zeros(n)
+    for m in notes:
+        f = mtof(m)
+        for d, side in ((-0.11, 'L'), (0.0, 'B'), (0.12, 'R')):
+            v = saw(f * 2 ** (d / 12), n, ph0=rng.random()) * 0.33
+            if side in 'LB':
+                L += v * (1.0 if side == 'L' else 0.7)
+            if side in 'RB':
+                R += v * (1.0 if side == 'R' else 0.7)
+    sub = sine(mtof(notes[0] - 12), n) * 0.45
+    L += sub
+    R += sub
+    e = np.ones(n)
+    a = S(att)
+    e[:a] = np.linspace(0, 1, a) ** 1.5
+    r0 = S(dur)
+    e[r0:] = np.exp(-tt(n - r0) / (rel / 3.5))
+    return np.stack([L, R]) * e
+
+
+for b, ch in enumerate(PROG):
+    t0 = 2.0 * b
+    if b == 7:
+        x = pad_chord(PAD['G'], 0.75, att=0.04, rel=0.06)
+    else:
+        x = pad_chord(PAD[ch], 2.0, att=0.08 if b else 0.012)
+    addm(mus_pad, x, t0)
+# final resolve on Am at the CRT switch-off
+addm(mus_pad, fade_in(pad_chord(PAD['Am'], 0.05, att=0.004, rel=0.9), 2), 15.0, 1.1)
+
+pad_open = filt(mus_pad, 'low', 1500, 2)
+pad_muff = filt(mus_pad, 'low', 520, 2)
+tN = tt(N)
+xf = np.clip((tN - 3.75) / 0.25, 0, 1)
+mus_pad = pad_muff * (1 - xf) * 0.62 + pad_open * xf * 0.7
+# synthwave pump from the kick
+pump = np.ones(N)
+for k in range(8, 30):
+    b = k * 0.5
+    i0 = S(b)
+    seg = tN[i0:] - b
+    pump[i0:] *= 1 - 0.38 * np.exp(-seg / 0.14) * (seg < 0.5)
+mus_pad *= pump
+
+# arpeggio (16ths) — the melodic hook
+for b, ch in enumerate(PROG):
+    for s in range(16):
+        t0 = 2.0 * b + 0.125 * s
+        if t0 >= 14.75 or 3.75 <= t0 < 4.0:
             continue
-        i0 = int(tb * SR)
-        n = int(0.42 * SR)
-        x = np.arange(n) / SR
-        pump[i0:i0 + n] = np.minimum(pump[i0:i0 + n], 1 - 0.45 * np.exp(-x / 0.12))
-    pad *= pump[:, None]
-    return pad
+        m = ARP[ch][ARP_PAT[s]]
+        n = S(0.16)
+        f = mtof(m)
+        v = 0.55 * square(f, n, 0.3) + 0.45 * saw(f * 1.003, n)
+        acc = 1.0 if s % 4 == 0 else (0.8 if s % 2 == 0 else 0.68)
+        e = env_ad(n, 0.003, 0.085)
+        v = filt(v * e, 'low', 3200, 2)
+        addm(mus_arp, v, t0, acc, pan=(-0.25 if s % 2 else 0.25))
+        ve = filt(v, 'low', 2400, 1)
+        for d, g, pn in ((0.1875, 0.32, -0.7), (0.375, 0.22, 0.7), (0.5625, 0.12, -0.7)):
+            if t0 + d < 14.75 and not (3.75 <= t0 + d < 4.0):
+                addm(mus_arp, ve, t0 + d, acc * g, pan=pn)
+arp_muff = filt(mus_arp, 'low', 900, 2)
+mus_arp = arp_muff * (1 - xf) * 0.75 + mus_arp * xf
+
+# bass: synthwave 8ths with a short glide, 4.0 → 14.75, plus the final note
+BASS_PAT = [0, 0, 12, 0, 0, 12, 0, 12]
+events = []
+for b in range(2, 8):
+    ch = PROG[b]
+    for e8 in range(8):
+        t0 = 2.0 * b + 0.25 * e8
+        if t0 >= 14.75:
+            continue
+        events.append((t0, ROOT[ch] + BASS_PAT[e8], 0.215))
+events.append((15.0, 33, 0.75))
+prev_f = mtof(events[0][1])
+for (t0, m, d) in events:
+    n = S(d + 0.03)
+    f1 = mtof(m)
+    glide = prev_f * (f1 / prev_f) ** np.clip(tt(n) / 0.028, 0, 1)
+    prev_f = f1
+    v = 0.7 * saw(glide, n) + 0.55 * sine(glide, n)
+    e = np.ones(n)
+    a = S(0.004)
+    e[:a] = np.linspace(0, 1, a)
+    r0 = S(d)
+    e[r0:] = np.linspace(1, 0, n - r0)
+    if d > 0.5:
+        e *= np.exp(-tt(n) / 0.35)
+    fc = 300 + 900 * np.exp(-tt(n) / 0.06)
+    v = svf_lp(v * e, fc)
+    addm(mus_bass, np.tanh(1.6 * v), t0)
 
 
-ARP_PAT = [0, 2, 3, 4, 2, 3, 1, 2, 0, 2, 3, 4, 3, 2, 1, 2]
-
-
-def make_arp():
-    out = np.zeros((N, 2))
-    step = BEAT / 2 / 2  # 十六分音符 0.125 s
-    for b, ch in enumerate(BARS):
-        for s in range(16):
-            t0 = b * 2.0 + s * step
-            if not music_stop(t0):
-                continue
-            tone = ARPT[ch][ARP_PAT[s]]
-            acc = 1.0 if s in (3, 11) else (0.8 if s % 4 == 0 else 0.62)
-            n = int(0.24 * SR)
-            if t0 < 3.75 and t0 + 0.24 > 3.75:
-                n = int((3.75 - t0) * SR)
-            if t0 + n / SR > 14.75:
-                n = int((14.75 - t0) * SR)
-            if n < 64:
-                continue
-            tt = tarr(n)
-            f = midi(tone)
-            s1 = blep_osc(np.full(n, f), 'sq') * 0.55 + blep_osc(np.full(n, f * 1.004), 'saw') * 0.45
-            fc_env = 700 + 3800 * np.exp(-tt / 0.06)
-            # 简易滤波包络：两段固定滤波按包络混合
-            bright = filt(sos_lp(4200, 2), s1)
-            dark = filt(sos_lp(800, 2), s1)
-            w = np.clip((fc_env - 800) / 3400, 0, 1)
-            x = bright * w + dark * (1 - w)
-            x *= np.exp(-tt / 0.16) * acc
-            x = fade_edges(x, 2.5, 6)
-            place(out, x, t0, 1.0, pan=0.25 * np.sin(s * 0.7 + b))
-    # 0–4 秒压低做闷
-    tt = tarr(N)
-    k = (tt >= 4.0).astype(float)
-    muff = filt(sos_lp(900, 2), out) * 0.55
-    arp = muff * (1 - k)[:, None] + out * k[:, None]
-    # 乒乓延迟（附点八分）
-    d = int(0.375 * SR)
-    wet = np.zeros_like(arp)
-    fb = 0.3
-    src = arp.copy()
-    for rep in range(1, 5):
-        sh = d * rep
-        g = fb ** (rep - 1) * 0.32
-        ch = rep % 2
-        wet[sh:, ch] += src[:-sh, 0 if ch else 1] * g if sh < N else 0
-    wet = filt(sos_lp(3000, 1), wet)
-    arp = arp + wet
-    return arp
-
-
-def make_bass():
-    out = np.zeros(N)
-    # 每个八分音符一个音；根音为主，偶尔跳八度；换和弦时带 45 ms 滑音
-    seq = []
-    for b, ch in enumerate(BARS):
-        for e8 in range(8):
-            t0 = b * 2.0 + e8 * 0.25
-            if t0 < 4.0 or t0 >= 14.75:
-                continue
-            m = ROOT[ch] + (12 if e8 in (3, 7) else 0)
-            seq.append((t0, m))
-    freq = np.zeros(N)
-    gate = np.zeros(N)
-    for i, (t0, m) in enumerate(seq):
-        i0 = int(t0 * SR)
-        i1 = int(min(t0 + 0.25, 14.75) * SR)
-        f1 = midi(m)
-        f0 = midi(seq[i - 1][1]) if i > 0 else f1
-        n = i1 - i0
-        x = np.arange(n) / SR
-        glide = 0.045 if (i > 0 and seq[i - 1][1] % 12 != m % 12) else 0.018
-        fr = f1 * (f0 / f1) ** np.exp(-x / glide * 3) if i > 0 else np.full(n, f1)
-        freq[i0:i1] = fr
-        ge = np.minimum(1, x / 0.004) * np.minimum(1, np.maximum(0, (0.235 - x) / 0.02))
-        gate[i0:i1] = ge * (0.85 + 0.15 * np.exp(-x / 0.05))
-    freq[freq == 0] = 55.0
-    s = blep_osc(freq, 'saw') * 0.7 + blep_osc(freq * 0.5, 'sq') * 0.35
-    s = filt(sos_lp(520, 2), s)
-    s = np.tanh(s * 1.6) / np.tanh(1.6)
-    s = filt(sos_lp(1800, 2), s)
-    s *= gate
-    return np.stack([s, s], axis=1)
-
-
-def kick(strength=1.0, dur=0.42):
-    n = int(dur * SR)
-    tt = tarr(n)
-    f = 46 + 120 * np.exp(-tt / 0.035) + 40 * np.exp(-tt / 0.006)
-    body = np.sin(2 * np.pi * np.cumsum(f) / SR) * np.exp(-tt / (0.17 * strength ** 0.5))
-    click = filt(sos_bp(1800, 6000), RNG.standard_normal(n)) * np.exp(-tt / 0.004) * 0.35
-    x = np.tanh((body + click) * (1.4 + 0.6 * strength))
-    return fade_edges(x, 2.0, 8)
+# drums
+def kick(heavy=1.0):
+    n = S(0.5)
+    t = tt(n)
+    f = 46 + 125 * np.exp(-t / 0.032)
+    body = sine(f, n) * np.exp(-t / (0.26 * heavy))
+    click = filt(noise(n), 'high', 1800) * np.exp(-t / 0.004) * 0.35
+    x = np.tanh(1.8 * (body + click))
+    return fade_in(x, 2)
 
 
 def snare():
-    n = int(0.28 * SR)
-    tt = tarr(n)
-    tone = np.sin(2 * np.pi * np.cumsum(185 + 60 * np.exp(-tt / 0.02)) / SR) * np.exp(-tt / 0.06)
-    nz = filt(sos_bp(1400, 8000), RNG.standard_normal(n)) * np.exp(-tt / 0.09)
-    x = tone * 0.6 + nz * 1.1
-    return fade_edges(x, 2.0, 8)
+    n = S(0.35)
+    t = tt(n)
+    nz = filt(noise(n), 'band', [1300, 7000]) * np.exp(-t / 0.11)
+    tone = sine(190 - 25 * t, n) * np.exp(-t / 0.06) * 0.8
+    return fade_in(np.tanh(1.3 * (nz * 0.9 + tone)), 2)
 
 
 def hat(open_=False):
-    n = int((0.22 if open_ else 0.07) * SR)
-    tt = tarr(n)
-    nz = filt(sos_hp(7000, 2), RNG.standard_normal(n))
-    x = nz * np.exp(-tt / (0.09 if open_ else 0.018))
-    return fade_edges(x, 2.0, 5)
+    n = S(0.25 if open_ else 0.08)
+    t = tt(n)
+    x = filt(noise(n), 'high', 7200, 4) * np.exp(-t / (0.07 if open_ else 0.02))
+    return fade_in(x, 2.0)
 
 
-def make_drums():
-    out = np.zeros((N, 2))
-    for i in range(32):
-        tb = i * BEAT
-        if 4.0 <= tb < 14.75 and tb not in (8.0, 13.0):
-            place(out, kick(1.0), tb, 0.95)
-        if 4.0 <= tb < 14.75 and i % 2 == 1:
-            place(out, snare(), tb, 0.42, pan=0.05)
-    for i in range(64):
-        th = i * 0.25
-        if not music_stop(th) or th + 0.07 > 14.75 and th < 14.75 and False:
+for k in range(8, 30):                     # 4.0 … 14.5
+    b = k * 0.5
+    addm(mus_drm, kick(), b, 0.95)
+for b in range(2, 8):
+    for off in (0.5, 1.5):
+        addm(mus_drm, snare(), 2.0 * b + off, 0.55, pan=0.05)
+for k in range(0, 59):
+    t0 = k * 0.25
+    if 3.75 <= t0 < 4.0 or t0 >= 14.75:
+        continue
+    off = (k % 2 == 1)
+    addm(mus_drm, hat(open_=(off and k % 8 == 7)), t0, 0.16 if off else 0.1, pan=0.3)
+addm(mus_drm, kick(1.6), 15.0, 1.0)
+
+music = 0.32 * mus_pad + 0.30 * mus_arp + 0.42 * mus_bass + 0.62 * mus_drm
+
+# ----------------------------------------------------------------- sound effects
+sfx = np.zeros((2, N))
+
+
+def whoosh(dur, f0, f1, q=1.6, peak=0.5, seed_pan=0.0):
+    n = S(dur)
+    t = tt(n)
+    fc = f0 * (f1 / f0) ** (t / dur)
+    x = svf_bp(noise(n), fc, q)
+    u = t / dur
+    e = np.where(u < peak, np.sin(np.pi / 2 * u / peak) ** 2, np.cos(np.pi / 2 * (u - peak) / (1 - peak)) ** 2)
+    return fade_in(x * e, 3)
+
+
+def boom(f0=60, f1=32, tau=0.35, dur=0.9):
+    n = S(dur)
+    t = tt(n)
+    f = f1 + (f0 - f1) * np.exp(-t / 0.08)
+    x = sine(f, n) * np.exp(-t / tau)
+    x += 0.6 * filt(noise(n), 'low', 260) * np.exp(-t / 0.05)
+    x = np.tanh(2.2 * x)              # harmonics so it survives a phone speaker
+    return fade_in(x, 2.5)
+
+
+def click(f=3200, tau=0.006, nz=0.5, dur=0.03):
+    n = S(dur)
+    t = tt(n)
+    x = sine(f, n) * np.exp(-t / tau) + nz * filt(noise(n), 'band', [f * 0.6, min(f * 2, 20000)]) * np.exp(-t / (tau * 0.7))
+    return fade_in(x, 2)
+
+
+# 0.0 opening hook: fast rush + engine that follows the car's speed
+add(sfx, whoosh(0.62, 260, 3200, q=1.2, peak=0.18), 0.0, 0.55)
+add(sfx, boom(90, 40, 0.18, 0.5), 0.0, 0.35)
+
+
+def speed(t):
+    t = np.asarray(t)
+    return np.where(t < 0.5, 950 + 1900 * (1 - t / 0.5) ** 2,
+                    np.where(t < 3.5, 950 + 1650 * ((t - 0.5) / 3) ** 2, 2600.0))
+
+
+n = S(3.75)
+t = tt(n)
+sp = speed(t) / 2600
+away = np.clip((t - 3.5) / 0.25, 0, 1)
+f_eng = (46 + 40 * sp) * (1 + 0.5 * away) * (1 + 0.006 * np.sin(2 * np.pi * 7 * t))
+eng = 0.6 * saw(f_eng, n) + 0.5 * square(f_eng * 0.5, n, 0.4)
+eng = svf_lp(eng, 260 + 700 * sp)
+e = np.clip(t / 0.05, 0, 1) * (0.55 + 0.45 * sp) * (1 - 0.75 * away)
+e[-S(0.008):] *= np.linspace(1, 0, S(0.008))
+amb = np.zeros((2, N))
+add(amb, eng * e, 0.0, 0.2)
+# sun inhales (3.45–3.75): rising swell, cut by the silence
+n = S(0.3)
+t = tt(n)
+sw = svf_bp(noise(n), 400 * (8 ** (t / 0.3)), 1.4) * (t / 0.3) ** 2
+add(sfx, fade_out(sw, 6), 3.45, 0.45)
+
+# 4.0 the pixel sun bursts: low impact + glass + sand that sweeps down and stops in 0.8 s
+add(sfx, boom(64, 30, 0.42, 1.1), 4.0, 1.0)
+gl = np.zeros(S(0.6))
+for i in range(60):
+    f = rng.uniform(2300, 9000)
+    o = int(rng.exponential(0.035) * SR)
+    d = rng.uniform(0.015, 0.11)
+    m = S(0.25)
+    if o + m > len(gl):
+        continue
+    gl[o:o + m] += rng.uniform(0.3, 1.0) * sine(f, m, rng.random()) * np.exp(-tt(m) / d)
+gl += 1.2 * filt(noise(len(gl)), 'band', [3000, 11000]) * np.exp(-tt(len(gl)) / 0.09)
+add(sfx, fade_in(norm(gl), 2), 4.0, 0.62, pan=0.0)
+n = S(0.8)
+t = tt(n)
+grains = noise(n) * (rng.random(n) < 0.18) * 3.0
+for ch, pan in ((0, -0.5), (1, 0.5)):
+    g = np.roll(grains, 37 * ch)
+    y = svf_lp(g, 9500 * (0.075 ** (t / 0.8)))
+    y *= (1 - t / 0.8) ** 1.6 * np.clip(t / 0.01, 0, 1)
+    add(sfx, fade_in(y, 3), 4.0, 0.42, pan=pan)
+
+# 4.4–6.4 suction: denser and denser "whoosh" grains + a big sweep per glyph + a soft tick per settled pixel column
+tg = 4.38
+gap = 0.13
+while tg < 6.35:
+    dur = 0.09
+    add(sfx, whoosh(dur, 900, 3200, q=2.2, peak=0.7), tg, 0.13 + 0.1 * (tg - 4.4) / 2, pan=rng.uniform(-0.7, 0.7))
+    gap = max(0.032, gap * 0.93)
+    tg += gap
+for k in range(5):
+    s0 = SWEEP0 + SWEEPD * k
+    add(sfx, whoosh(0.34, 700, 4200, q=1.3, peak=0.75), s0 - 0.03, 0.5, pan=-0.6 + 0.3 * k)
+    for c in range(20):
+        if c % 2 == 0:
             continue
-        if 3.75 - 0.07 < th < 3.75:
-            continue
-        op = (i % 4 == 2) and th >= 4.0 and th < 14.0
-        g = (0.20 if i % 2 else 0.13) * (0.75 if th < 4.0 else 1.0)
-        x = hat(op)
-        if th < 3.75:
-            x = x[: max(64, min(len(x), int((3.75 - th) * SR)))]
-        if th < 14.75 and th + len(x) / SR > 14.75:
-            x = fade_edges(x[: int((14.75 - th) * SR)], 2, 4)
-        place(out, x, th, g * (1.4 if op else 1.0), pan=0.25 if i % 2 else -0.15)
-    return out
+        x = (c + 1) / 20
+        tl = s0 + SWEEPD * np.arccos(1 - 2 * x) / np.pi
+        add(sfx, click(rng.uniform(2600, 4200), 0.004, 0.4), tl, 0.16, pan=-0.6 + 0.3 * k + 0.012 * c)
 
+# 6.5 / 6.58 red extrusion pops out, layer by layer ("咔")
+for t0, g in ((6.5, 0.75), (6.58, 0.6)):
+    n = S(0.12)
+    t = tt(n)
+    x = filt(noise(n), 'band', [1400, 5200]) * np.exp(-t / 0.012) + 0.9 * sine(250 - 900 * t, n) * np.exp(-t / 0.035)
+    add(sfx, fade_in(np.tanh(1.5 * x), 2), t0, g)
+# 7.0 "AI" turns warm yellow: a bright two-partial chime
+n = S(0.5)
+t = tt(n)
+ch = sine(1318.5, n) * np.exp(-t / 0.16) + 0.5 * sine(1975.5, n) * np.exp(-t / 0.1) + 0.5 * square(659.25, n, 0.25) * np.exp(-t / 0.03)
+add(sfx, fade_in(ch, 2), 7.0, 0.7)
+# 7.5 glow powers on left → right: buzzing flicker that follows the visual flicker
+n = S(0.5)
+t = tt(n)
+hum = saw(100, n) * 0.6 + saw(200.5, n) * 0.4
+hum = filt(hum, 'band', [180, 2600])
+gate = np.zeros(n)
+FL = [1, 0, 0.7, 0, 0, 1, 0.4, 1, 1, 0.8]
+for k in range(5):
+    on = 0.065 * k
+    idx = np.clip(((t - on) / 0.016).astype(int), 0, 9)
+    g = np.where(t < on, 0.0, np.where(t - on < 0.16, np.array(FL)[idx], 1.0))
+    gate = np.maximum(gate, g)
+gate = uniform_filter1d(gate, S(0.002))
+hum *= gate * np.exp(-np.clip(t - 0.3, 0, None) / 0.12)
+add(sfx, fade_in(hum, 3), 7.5, 0.75)
+add(sfx, click(1800, 0.008, 0.8, 0.05), 7.5, 0.8)
+# 7.2–8.0 reverse-reverb "inhale" into the glitch hit
+n = S(1.3)
+t = tt(n)
+ir = noise(n) * np.exp(-t / 0.32)
+src = np.zeros(n)
+for m in (57, 60, 64, 69):
+    src[:S(0.2)] += sine(mtof(m), S(0.2)) * np.exp(-tt(S(0.2)) / 0.05)
+src[:S(0.01)] += noise(S(0.01))
+wet = signal.fftconvolve(src, ir)[:n]
+wet = filt(wet, 'band', [300, 7000])
+rev = norm(wet[::-1])[-S(0.8):]
+rev *= np.linspace(0, 1, len(rev)) ** 1.2
+rev = fade_out(rev, 14)
+add(sfx, st(rev, 0.0), 7.972 - len(rev) / SR, 0.8)
 
-# ------------------------------------------------------------------ 音效
-def noise(n):
-    return RNG.standard_normal(n)
-
-
-def sfx_open_whoosh():
-    n = int(0.6 * SR)
-    tt = tarr(n)
-    x = sweep_bp(noise(n), 300, 2600, q=1.1)
-    x2 = sweep_bp(noise(n), 2600, 500, q=1.1)
-    w = np.clip(tt / 0.15, 0, 1)
-    x = x * (1 - w) + x2 * w
-    e = np.minimum(1, tt / 0.035) * np.exp(-np.maximum(0, tt - 0.1) / 0.13)
-    rum = np.sin(2 * np.pi * np.cumsum(60 + 30 * np.exp(-tt / 0.1)) / SR) * np.exp(-tt / 0.18)
-    y = norm(x * e) * 0.9 + rum * 0.5
-    return fade_edges(y, 3, 10)
-
-
-def sfx_road():
-    """0–3.75 路面风噪：随速度加强，每个弯道带一阵左右摆动的风声"""
-    n = int(3.75 * SR)
-    tt = tarr(n)
-    br = np.cumsum(noise(n))
-    br = filt(sos_hp(40, 2), br)
-    br = norm(filt(sos_lp(380, 2), br))
-    wind = norm(filt(sos_bp(500, 2400), noise(n)))
-    v = 0.25 + 0.75 * np.clip((tt - 0.6) / 2.9, 0, 1) ** 1.8
-    # 弯道方向 → 声像（与画面 HEAD 的弯一致：右左右左右）
-    curves = [(0.62, 0.52, 1), (1.42, 0.44, -1), (2.12, 0.36, 1), (2.72, 0.30, -1), (3.18, 0.24, 1)]
-    pan = np.zeros(n)
-    swell = np.zeros(n)
-    for c, hw, s in curves:
-        x = (tt - c) / hw
-        m = np.abs(x) < 1
-        pan[m] += s * 0.6 * np.cos(x[m] * np.pi / 2) ** 2
-        swell[m] += np.cos(x[m] * np.pi / 2) ** 2
-    L = (br * 0.55 + wind * (0.25 + 0.5 * swell)) * v * (1 - pan * 0.5)
-    R = (br * 0.55 + wind * (0.25 + 0.5 * swell)) * v * (1 + pan * 0.5)
-    y = np.stack([L, R], axis=1)
-    y[:, 0] = fade_edges(y[:, 0], 30, 4)
-    y[:, 1] = fade_edges(y[:, 1], 30, 4)
-    return y
-
-
-def sfx_inhale():
-    """3.45–3.75 太阳吸气：上扬的吸入声，3.75 戛然而止"""
-    n = int(0.3 * SR)
-    tt = tarr(n)
-    nz = sweep_bp(noise(n), 400, 5000, q=2.0)
-    tone = sine_sweep(180 * (1200 / 180) ** (tt / 0.3)) * 0.35
-    e = (tt / 0.3) ** 2.2
-    y = (norm(nz) * 0.8 + tone) * e
-    return fade_edges(y, 3, 4)
-
-
-def sfx_explosion():
-    """4.0 太阳炸开：低频冲击 + 玻璃碎裂 + 0.8 秒内收住的像素沙沙声"""
-    n = int(1.4 * SR)
-    tt = tarr(n)
-    boom = np.sin(2 * np.pi * np.cumsum(44 + 70 * np.exp(-tt / 0.08)) / SR) * np.exp(-tt / 0.42)
-    thump = filt(sos_lp(260, 2), noise(n)) * np.exp(-tt / 0.07)
-    low = np.tanh((boom * 1.0 + norm(thump) * 0.6) * 2.0)
-    # 玻璃碎裂：大量高频衰减正弦 + 亮噪声
-    glass = np.zeros(n)
-    for k in range(70):
-        f = RNG.uniform(2400, 10500)
-        t0 = RNG.uniform(0, 0.14) ** 1.3
-        i0 = int(t0 * SR)
-        m = int(RNG.uniform(0.05, 0.4) * SR)
-        x = np.arange(m) / SR
-        g = np.sin(2 * np.pi * f * x + RNG.random() * 6) * np.exp(-x / RNG.uniform(0.02, 0.12))
-        g = fade_edges(g, 1.0, 3)
-        glass[i0:i0 + m] += g[: n - i0] * RNG.uniform(0.3, 1.0)
-    crack = filt(sos_hp(3000, 2), noise(n)) * np.exp(-tt / 0.03)
-    glass = norm(glass) * 0.75 + norm(crack) * 0.5
-    # 像素四散的沙沙声：细碎颗粒 + 低通从高往低扫，0.8 s 收住
-    m = int(0.8 * SR)
-    grains = np.zeros(m)
-    nt = 520
-    pos = np.sort(RNG.uniform(0, 0.78, nt) ** 1.4 * 0.78 / 0.78 ** 1.4)
-    for p in pos:
-        i0 = int(p * SR)
-        L = int(RNG.uniform(0.002, 0.006) * SR)
-        g = noise(L) * np.hanning(L) * RNG.uniform(0.3, 1)
-        grains[i0:i0 + L] += g[: m - i0]
-    rustle = sweep_lp(grains + noise(m) * 0.15, 12000, 700, block=256)
-    re = np.exp(-tarr(m) / 0.22) * np.clip((0.8 - tarr(m)) / 0.12, 0, 1)
-    rustle = norm(rustle * re)
-    y = np.zeros((n, 2))
-    y[:, 0] = low * 1.0 + glass * 0.55
-    y[:, 1] = low * 1.0 + glass * 0.55
-    y[:m, 0] += rustle * 0.55
-    y[:m, 1] += np.roll(rustle, 90) * 0.55
-    y[:, 0] = fade_edges(y[:, 0], 2.0, 30)
-    y[:, 1] = fade_edges(y[:, 1], 2.0, 30)
-    return y
-
-
-CPL = [4.70 + 0.18 * k + 1.05 for k in range(5)]   # 每个字成形时刻（与画面一致）
-S_UNIT = [4.70 + 0.18 * k for k in range(5)]
-
-
-def sfx_suction():
-    """4.4–6.47 越来越密的“嗖嗖”吸入声"""
-    t_a, t_b = 4.4, 6.47
-    n = int((t_b - t_a + 0.3) * SR)
-    out = np.zeros((n, 2))
-    t = 0.0
-    k = 0
-    while True:
-        u = t / (t_b - t_a)
-        if u >= 1:
-            break
-        rate = 3.5 + 13 * u ** 1.4
-        L = int(RNG.uniform(0.14, 0.24) * SR)
-        x = sweep_bp(noise(L), RNG.uniform(500, 900), RNG.uniform(2500, 5200), q=1.6)
-        e = np.sin(np.linspace(0, np.pi, L)) ** 2 * np.linspace(0.6, 1.0, L)
-        g = norm(x * e) * (0.45 + 0.55 * u)
-        pan = -0.8 + 1.6 * u + RNG.uniform(-0.25, 0.25)
-        th = (np.clip(pan, -1, 1) + 1) * np.pi / 4
-        i0 = int(t * SR)
-        out[i0:i0 + L, 0] += g[: n - i0] * np.cos(th)
-        out[i0:i0 + L, 1] += g[: n - i0] * np.sin(th)
-        t += 1.0 / rate
-        k += 1
-    out[:, 0] = fade_edges(out[:, 0], 5, 40)
-    out[:, 1] = fade_edges(out[:, 1], 5, 40)
-    return out
-
-
-def click(f=4200, dur=0.012, tau=0.0025):
-    n = int(dur * SR)
-    tt = tarr(n)
-    x = np.sin(2 * np.pi * f * tt) * np.exp(-tt / tau) + filt(sos_hp(2500, 1), noise(n)) * np.exp(-tt / (tau * 0.6)) * 0.4
-    return fade_edges(x, 0.6, 2)
-
-
-def sfx_cell_clicks(bus):
-    """每个像素格落定时的轻“咔哒”"""
-    for k in range(5):
-        a0, a1 = S_UNIT[k] + 0.3, CPL[k]
-        cnt = 34 if k < 4 else 40
-        ts = np.sort(a0 + (a1 - a0) * RNG.beta(2.2, 1.6, cnt))
-        for t0 in ts:
-            place(bus, click(RNG.uniform(3000, 6000)), t0, RNG.uniform(0.10, 0.2), pan=-0.7 + 0.35 * k + RNG.uniform(-.1, .1))
-        # 字成形（亮一下变实心）
-        n = int(0.16 * SR)
-        tt = tarr(n)
-        f = midi(76 + [0, 2, 3, 5, 7][k])
-        tink = (np.sin(2 * np.pi * f * 2 * tt) * 0.6 + np.sin(2 * np.pi * f * 5.4 * tt) * 0.25) * np.exp(-tt / 0.045)
-        place(bus, fade_edges(tink, 1.5, 6), CPL[k], 0.3, pan=-0.7 + 0.35 * k)
-
-
-def sfx_pop(f0=180):
-    """6.5 挤出厚度“咔”"""
-    n = int(0.12 * SR)
-    tt = tarr(n)
-    snap = filt(sos_bp(1500, 5000), noise(n)) * np.exp(-tt / 0.012)
-    thunk = np.sin(2 * np.pi * np.cumsum(f0 * 0.5 + f0 * np.exp(-tt / 0.015)) / SR) * np.exp(-tt / 0.04)
-    return fade_edges(norm(snap) * 0.8 + thunk * 0.7, 1.5, 6)
-
-
-def sfx_blip_ai():
-    """7.0 “AI” 变暖黄：两音上行的亮色短音"""
-    y = np.zeros(int(0.32 * SR))
-    for i, (m, d) in enumerate(((76, 0.07), (83, 0.24))):
-        n = int(d * SR)
-        tt = tarr(n)
-        s = blep_osc(np.full(n, midi(m)), 'sq') * 0.5 + np.sin(2 * np.pi * midi(m + 12) * tt) * 0.3
-        s = filt(sos_lp(5000, 2), s) * np.exp(-tt / (0.05 if i == 0 else 0.09))
-        i0 = int(i * 0.065 * SR)
-        y[i0:i0 + n] += fade_edges(s, 1.5, 5)[: len(y) - i0]
-    return y
-
-
-def sfx_power_on():
-    """7.5 光晕从左到右通电：电流嗡声 + 每个字一次通电“滋”"""
-    n = int(0.48 * SR)
-    tt = tarr(n)
-    hum = blep_osc(np.full(n, 100.0), 'saw') * 0.6 + blep_osc(np.full(n, 150.0), 'sq') * 0.25
-    hum = filt(sos_bp(150, 2600), hum)
-    flick = np.zeros(n)
-    for g in range(6):
-        on = g * 0.065
-        for j, v in enumerate([1, 0.2, 1, 0.35, 1]):
-            a = int((on + j * 0.02) * SR)
-            b = int((on + (j + 1) * 0.02) * SR)
-            flick[a:b] = np.maximum(flick[a:b], v)
-        flick[int((on + 0.1) * SR):] = np.maximum(flick[int((on + 0.1) * SR):], 0.55)
-    flick = filt(sos_lp(300, 1), flick)
-    e = flick * np.clip((0.48 - tt) / 0.15, 0, 1)
-    zz = filt(sos_bp(2500, 9000), noise(n)) * flick * 0.25
-    y = hum * e + zz
-    pan = np.linspace(-0.8, 0.8, n)
-    out = np.stack([y * np.cos((pan + 1) * np.pi / 4), y * np.sin((pan + 1) * np.pi / 4)], axis=1) * 1.4
-    out[:, 0] = fade_edges(out[:, 0], 3, 20)
-    out[:, 1] = fade_edges(out[:, 1], 3, 20)
-    return out
-
-
-def sfx_reverse_swell():
-    """7.0–8.0 反向混响的“吸气”，正好在 8.0 断开"""
-    n = int(0.25 * SR)
-    tt = tarr(n)
-    src = np.zeros(n)
-    for m in (57, 60, 64, 69, 76):
-        src += blep_osc(np.full(n, midi(m)), 'saw')
-    src = filt(sos_lp(3000, 2), src) * np.exp(-tt / 0.06) + filt(sos_hp(2000, 2), noise(n)) * np.exp(-tt / 0.03) * 2
-    long_ir = make_ir(sec=1.4, tau=0.5, lp_end=4000, seed=9)
-    wet = np.stack([signal.fftconvolve(src, long_ir[:, c]) for c in range(2)], axis=1)
-    wet = wet[::-1][-int(1.0 * SR):]
-    wet = norm(wet)
-    e = np.linspace(0, 1, len(wet)) ** 1.8
-    wet *= e[:, None]
-    wet[:, 0] = fade_edges(wet[:, 0], 5, 3)
-    wet[:, 1] = fade_edges(wet[:, 1], 5, 3)
-    return wet
-
-
-def sfx_impact(strength=1.0):
-    """重拍冲击：底鼓 + 次低频 + 碎裂噪声"""
-    n = int(0.9 * SR)
-    tt = tarr(n)
-    sub = np.sin(2 * np.pi * np.cumsum(48 + 90 * np.exp(-tt / 0.05)) / SR) * np.exp(-tt / (0.28 * strength))
-    crack = filt(sos_bp(900, 7000), noise(n)) * np.exp(-tt / 0.05)
-    x = np.tanh((sub * 1.2 + norm(crack) * 0.55) * 2.2)
-    return fade_edges(x, 2.0, 30)
-
-
-def sfx_glitch():
-    """8.0–8.4 数字噪声“滋啦”，两下，第二下更弱"""
-    n = int(0.42 * SR)
-    tt = tarr(n)
-    y = np.zeros(n)
-    i = 0
-    while i < n:
-        L = int(RNG.uniform(0.006, 0.022) * SR)
-        f = RNG.choice([180, 330, 520, 760, 1200, 2100, 3400, 5200]) * RNG.uniform(0.9, 1.1)
-        kind = RNG.integers(0, 3)
-        x = np.arange(L) / SR
+# 8.0 glitch: hard hit + 0.4 s of digital "滋啦", segment by segment with the picture (30 Hz), 2nd burst weaker
+add(sfx, boom(75, 34, 0.3, 0.8), 8.0, 1.0)
+add(sfx, kick(1.3), 8.0, 0.8)
+add(sfx, click(2800, 0.01, 1.2, 0.06), 8.0, 0.7)
+for (a, b), g in ((GLITCH1, 1.0), (GLITCH2, 0.55)):
+    tseg = a
+    while tseg < b - 1e-6:
+        nb = (np.floor(tseg * 30 + 1e-6) + 1) / 30
+        d = min(nb - tseg, b - tseg)
+        n = S(d)
+        kind = rng.integers(0, 3)
         if kind == 0:
-            seg = np.sign(np.sin(2 * np.pi * f * x))
+            x = square(rng.uniform(180, 1400), n, rng.uniform(0.1, 0.5))
         elif kind == 1:
-            seg = np.repeat(RNG.uniform(-1, 1, L // 24 + 1), 24)[:L]
+            hold = int(rng.integers(6, 40))
+            x = np.repeat(noise(n // hold + 1), hold)[:n]
         else:
-            seg = np.round(noise(L) * 3) / 3
-        y[i:i + L] = seg[: n - i] * RNG.uniform(0.5, 1.0)
-        i += L
-    y = filt(sos_hp(150, 2), y)
-    e = np.where(tt < 0.2, 1.0 - 0.3 * tt / 0.2, 0.0) + np.where((tt >= 0.24) & (tt < 0.42), 0.5 * (1 - 0.4 * (tt - 0.24) / 0.18), 0)
-    e = filt(sos_lp(400, 1), e)
-    y = y * e
-    st = np.stack([y, np.roll(y, 37) * 0.9], axis=1)
-    st[:, 0] = fade_edges(st[:, 0], 2, 5)
-    st[:, 1] = fade_edges(st[:, 1], 2, 5)
-    return st
+            x = np.round(noise(n) * 2) / 2 * square(rng.uniform(60, 300), n)
+        x = filt(x, 'band', [250, 9000]) * rng.uniform(0.7, 1.0)
+        x = fade_out(fade_in(x, 2.0), 2.0)
+        add(sfx, x, tseg, 0.42 * g, pan=rng.uniform(-0.6, 0.6))
+        tseg += d
+
+# 8.5 the red pixel flies to 娜, 8.87 it drops
+add(sfx, whoosh(0.28, 600, 3000, q=1.8, peak=0.6), 8.5, 0.32, pan=-0.3)
+n = S(0.13)
+add(sfx, fade_in(sine(1400 * 0.45 ** (tt(n) / 0.13), n) * np.linspace(0.2, 1, n) ** 2, 3), 8.87, 0.12, pan=-0.5)
+
+# 9.0–11.5 landings: 8-bit note climbing the scale + a soft weight thump
+SCALE = [69, 71, 72, 74, 76, 77]
+for j, t0 in enumerate(LAND):
+    n = S(0.2)
+    t = tt(n)
+    f = mtof(SCALE[j]) * (1 + 1.0 * np.exp(-t / 0.008))
+    x = square(f, n, 0.25) * np.exp(-t / 0.075)
+    x = filt(x, 'low', 6000, 1)
+    add(sfx, fade_in(x, 2), t0, 0.55, pan=-0.6 + 0.24 * j)
+    n = S(0.12)
+    t = tt(n)
+    th = np.tanh(2 * sine(160 - 600 * t, n) * np.exp(-t / 0.035))
+    add(sfx, fade_in(th, 2), t0, 0.6, pan=-0.6 + 0.24 * j)
 
 
-def sfx_zip():
-    n = int(0.3 * SR)
-    tt = tarr(n)
-    x = sweep_bp(noise(n), 900, 6000, q=2.5)
-    tone = sine_sweep(400 * (1600 / 400) ** (tt / 0.3)) * 0.2
-    e = np.sin(np.pi * np.clip(tt / 0.3, 0, 1)) ** 1.5
-    return fade_edges((norm(x) * 0.8 + tone) * e, 3, 6)
+# 12.0 the period lands: crisp "叮" + sonic logo (motif A4–E5–A5), repeated at 13.7
+def bell(f, dur=0.6, tau=0.25, idx=2.2):
+    n = S(dur)
+    t = tt(n)
+    mod = idx * np.exp(-t / 0.08) * sine(f * 3.5, n)
+    x = np.sin(2 * np.pi * np.cumsum(np.full(n, f)) / SR + mod) * np.exp(-t / tau)
+    return fade_in(x, 2)
 
 
-def sfx_8bit(m):
-    """小球落字：8-bit 短音（方波 + 音高下滑）+ 轻轻一声闷响"""
-    n = int(0.16 * SR)
-    tt = tarr(n)
-    f = midi(m) * (1 + 0.5 * np.exp(-tt / 0.012))
-    sq = blep_osc(f, 'sq') * np.where(tt < 0.1, 1, np.exp(-(tt - 0.1) / 0.02))
-    sq = np.round(sq * 8) / 8                      # 轻微比特化
-    thud = np.sin(2 * np.pi * np.cumsum(110 + 120 * np.exp(-tt / 0.01)) / SR) * np.exp(-tt / 0.035)
-    return fade_edges(sq * 0.55 + thud * 0.6, 1.5, 6)
+def logo(t0, gain):
+    for i, (m, tau) in enumerate(((69, 0.16), (76, 0.16), (81, 0.24))):
+        n = S(0.7)
+        t = tt(n)
+        f = mtof(m)
+        x = 0.7 * sine(f, n) + 0.3 * square(f, n, 0.5) * np.exp(-t / 0.03)
+        x = filt(x * np.exp(-t / tau), 'low', 5000, 1) + 0.35 * sine(f * 2, n) * np.exp(-t / (tau * 0.6))
+        add(sfx, fade_in(x, 2), t0 + 0.11 * i, gain, pan=-0.2 + 0.2 * i)
 
 
-def sfx_ding():
-    """12.0 句号落定：清脆的“叮”"""
-    n = int(0.9 * SR)
-    tt = tarr(n)
-    fc = 2093.0
-    mod = np.sin(2 * np.pi * fc * 3.5 * tt) * 2.2 * np.exp(-tt / 0.08)
-    x = np.sin(2 * np.pi * fc * tt + mod) * np.exp(-tt / 0.28)
-    x += np.sin(2 * np.pi * fc * 2.76 * tt) * np.exp(-tt / 0.07) * 0.3
-    return fade_edges(x, 1.5, 40)
+add(sfx, bell(1760, 0.5, 0.12, 2.0), PERIOD_T, 0.6, pan=0.4)
+add(sfx, click(2600, 0.01, 0.3, 0.05), PERIOD_T, 0.3, pan=0.4)
+logo(PERIOD_T, 0.5)
+# 12.05–12.9 glint sweep over the title
+n = S(0.85)
+t = tt(n)
+sh = np.zeros(n)
+for fm in (2637.0, 3520.0, 4186.0):
+    sh += sine(fm * (1 + 0.12 * t / 0.85), n, rng.random()) * (0.6 + 0.4 * np.sin(2 * np.pi * 14 * t + fm))
+sh += 0.5 * filt(noise(n), 'band', [6000, 11000])
+sh *= np.sin(np.pi * t / 0.85) ** 2
+add(sfx, np.stack([sh * (1 - t / 0.85), sh * (t / 0.85)]), 12.05, 0.16)
+# 12.72–13.0 short riser into the downbeat
+n = S(0.28)
+t = tt(n)
+ri = sine(320 * (5 ** (t / 0.28)), n) * 0.5 + svf_bp(noise(n), 800 * (6 ** (t / 0.28)), 2.0)
+ri *= (t / 0.28) ** 1.6
+ri = fade_out(ri[:S(0.25)], 12)
+add(sfx, ri, 12.72, 0.55)
+# 13.0 strong beat: impact + the title lifts
+add(sfx, boom(70, 36, 0.22, 0.7), 13.0, 0.8)
+add(sfx, click(3000, 0.012, 1.4, 0.07), 13.0, 0.55)
+add(sfx, whoosh(0.35, 1800, 500, q=1.5, peak=0.2), 13.0, 0.2)
+# 13.0–13.55 decoding chatter + a light "嗒" for every locked character
+for k in range(int(0.55 / 0.05)):
+    for i in range(3):
+        n = S(0.012)
+        add(sfx, fade_out(fade_in(square(rng.uniform(1400, 3200), n, 0.5), 2), 2), 13.0 + 0.05 * k + 0.016 * i, 0.028, pan=rng.uniform(-0.6, 0.6))
+for i in range(SUB_N):
+    add(sfx, click(2400, 0.006, 0.9, 0.04), SUB_LOCK0 + SUB_LOCKD * i, 0.5, pan=-0.6 + 1.2 * i / (SUB_N - 1))
+logo(13.7, 0.5)
+
+# 15.0 CRT switch-off "噗": heaviest hit — sub boom, puff, downward zap, static
+add(sfx, boom(70, 28, 0.5, 1.2), 15.0, 1.0)
+n = S(0.4)
+t = tt(n)
+puff = filt(noise(n), 'low', 900) * np.exp(-t / 0.06)
+zap = sine(2200 * (0.03 ** np.clip(t / 0.14, 0, 1)), n) * np.exp(-t / 0.1)
+stat = filt(noise(n) * (rng.random(n) < 0.06), 'high', 2500) * np.exp(-t / 0.07)
+add(sfx, fade_in(np.tanh(1.4 * (puff + 0.45 * zap + 1.2 * stat)), 2), 15.0, 0.8)
+# 15.5 dot flashes, 15.7 short "哔" as it dies
+add(sfx, bell(2093, 0.3, 0.07, 1.0), 15.5, 0.16)
+n = S(0.075)
+bp = filt(square(1046.5, n, 0.5), 'low', 4500, 2)
+add(sfx, fade_out(fade_in(bp, 3), 8), 15.7, 0.3)
+
+# ----------------------------------------------------------------- mix
+# sidechain: music ducks under every effect
+env = np.max(np.abs(sfx), axis=0)
+env = maximum_filter1d(env, S(0.01))
+a = np.exp(-1 / (SR * 0.12))
+env = signal.lfilter([1 - a], [1, -a], env)
+duck_db = -10.0 * np.clip(env / 0.25, 0, 1)
+duck = 10 ** (duck_db / 20)
+music_d = music * duck
+
+# the two silent half beats
+gate = np.ones(N)
+for a0, a1 in SILENCES:
+    i0, i1 = S(a0), S(a1)
+    r = S(0.01)
+    gate[i0:i1] = 0
+    gate[i0 - r:i0] *= np.linspace(1, 0, r)
+sfx_g = sfx
+
+mix = music_d + 1.15 * (sfx_g + amb)
 
 
-def sfx_logo():
-    """声音标识：同一个 3 音动机 C5–E5–A5（短促、尾音自然衰减，不留长高音）"""
-    notes = [(72, 0.0, 0.16), (76, 0.12, 0.16), (81, 0.24, 0.55)]
-    y = np.zeros(int(0.95 * SR))
-    for m, t0, d in notes:
-        n = int(d * SR)
-        tt = tarr(n)
-        f = midi(m)
-        s = blep_osc(np.full(n, f), 'sq') * 0.35 + blep_osc(np.full(n, f * 1.003), 'saw') * 0.35
-        s = filt(sos_lp(3200, 2), s)
-        bell = np.sin(2 * np.pi * f * 2 * tt + 1.5 * np.sin(2 * np.pi * f * 2 * tt) * np.exp(-tt / 0.05)) * 0.35
-        e = np.exp(-tt / (0.09 if d < 0.3 else 0.22))
-        i0 = int(t0 * SR)
-        y[i0:i0 + n] += fade_edges((s + bell) * e, 2, 10)
-    return reverb(y, 0.18)
-
-
-def sfx_shimmer():
-    """12.1–12.95 扫光：从左到右的细亮沙声"""
-    n = int(0.85 * SR)
-    tt = tarr(n)
-    x = sweep_bp(noise(n), 2500, 9000, q=2.0)
-    e = np.sin(np.pi * tt / 0.85) ** 2
-    y = norm(x * e)
-    pan = np.linspace(-0.85, 0.85, n)
-    out = np.stack([y * np.cos((pan + 1) * np.pi / 4), y * np.sin((pan + 1) * np.pi / 4)], axis=1) * 1.4
-    return out
-
-
-def sfx_riser():
-    """12.75–13.0 短促上扬"""
-    n = int(0.25 * SR)
-    tt = tarr(n)
-    f = 220 * (1760 / 220) ** (tt / 0.25) ** 1.5
-    s = blep_osc(f, 'saw') * 0.4 + sweep_bp(noise(n), 800, 7000, q=1.5) * 1.2
-    e = (tt / 0.25) ** 1.6
-    return fade_edges(norm(filt(sos_lp(6000, 2), s)) * e, 3, 3)
-
-
-def sfx_decode(bus):
-    """乱码解码：随机字闪动的细碎“滴答” + 每锁定一个字一声“嗒”"""
-    for i in range(12):
-        t0 = 13.0 + i * 0.05
-        place(bus, click(RNG.uniform(5000, 8000), 0.008, 0.0012), t0 + 0.002, 0.09, pan=RNG.uniform(-.5, .5))
-    for n_ in range(11):
-        t0 = 13.08 + n_ * 0.048
-        n = int(0.05 * SR)
-        tt = tarr(n)
-        x = (np.sin(2 * np.pi * 1550 * tt) * 0.7 + np.sin(2 * np.pi * 3100 * tt) * 0.25) * np.exp(-tt / 0.008)
-        x += filt(sos_bp(1500, 6000), noise(n)) * np.exp(-tt / 0.003) * 0.5
-        place(bus, fade_edges(x, 1, 4), t0, 0.32, pan=-0.6 + 0.12 * n_)
-
-
-def sfx_breath():
-    """14.0–14.75 句点轻轻呼吸发光"""
-    n = int(0.75 * SR)
-    tt = tarr(n)
-    x = filt(sos_bp(300, 1800), noise(n))
-    tone = np.sin(2 * np.pi * 220 * tt) * 0.25 + np.sin(2 * np.pi * 330 * tt) * 0.12
-    e = np.sin(np.pi * tt / 0.75) ** 2
-    return fade_edges((norm(x) * 0.5 + tone) * e, 5, 10)
-
-
-def sfx_crt():
-    """15.0 显像管关机：“噗”的电流声（全片最重的一拍）"""
-    n = int(1.0 * SR)
-    tt = tarr(n)
-    thump = np.sin(2 * np.pi * np.cumsum(46 + 110 * np.exp(-tt / 0.045)) / SR) * np.exp(-tt / 0.32)
-    puff = filt(sos_lp(700, 2), noise(n)) * np.exp(-tt / 0.06)
-    whine = sine_sweep(9000 * (250 / 9000) ** np.clip(tt / 0.16, 0, 1)) * np.exp(-tt / 0.09) * 0.25
-    crackle = np.zeros(n)
-    for k in range(40):
-        i0 = int(RNG.uniform(0, 0.18) ** 1.5 * SR)
-        L = int(0.002 * SR)
-        crackle[i0:i0 + L] += noise(L) * np.hanning(L) * RNG.uniform(0.4, 1)
-    x = np.tanh((thump * 1.3 + norm(puff) * 0.7) * 2.2) + whine + filt(sos_hp(2000, 1), crackle) * 0.8
-    return fade_edges(x, 2.0, 40)
-
-
-def sfx_beep():
-    """15.7 熄灭：短促的“哔”"""
-    n = int(0.085 * SR)
-    tt = tarr(n)
-    x = np.sin(2 * np.pi * 1320 * tt) * 0.8 + blep_osc(np.full(n, 1320.0), 'sq') * 0.12
-    return fade_edges(x, 3, 12)
-
-
-def sfx_sparkle():
-    n = int(0.3 * SR)
-    tt = tarr(n)
-    x = np.sin(2 * np.pi * 2637 * tt) * np.exp(-tt / 0.05) + np.sin(2 * np.pi * 3951 * tt) * np.exp(-tt / 0.03) * 0.5
-    return fade_edges(x, 1.5, 10)
-
-
-def final_chord():
-    """15.0 最后一拍：低沉的 Am 落定，自然衰减到静音"""
-    n = int(1.0 * SR)
-    tt = tarr(n)
-    y = np.zeros(n)
-    for m in (45, 52, 57, 60, 64):
-        y += blep_osc(np.full(n, midi(m)), 'saw') * (1.2 if m < 50 else 0.7)
-    y = filt(sos_lp(900, 2), y) * np.exp(-tt / 0.33)
-    return reverb(fade_edges(y, 3, 60), 0.25)
-
-
-# ------------------------------------------------------------------ 混音与母带
-def biquad_peak(f0, gain_db, q):
+def peaking(f0, gain_db, q):
     A = 10 ** (gain_db / 40)
-    w0 = 2 * np.pi * f0 / SR
-    al = np.sin(w0) / (2 * q)
-    b = np.array([1 + al * A, -2 * np.cos(w0), 1 - al * A])
-    a = np.array([1 + al / A, -2 * np.cos(w0), 1 - al / A])
-    return np.concatenate([b / a[0], a / a[0]])[None, :]
+    w = 2 * np.pi * f0 / SR
+    al = np.sin(w) / (2 * q)
+    b = [1 + al * A, -2 * np.cos(w), 1 - al * A]
+    aa = [1 + al / A, -2 * np.cos(w), 1 - al / A]
+    return np.array(b) / aa[0], np.array(aa) / aa[0]
 
 
+mix = filt(mix, 'high', 40, 4)                       # < 40 Hz rolled off
+b, a = peaking(5800, 2.5, 0.7)                       # a little 4–8 kHz air for phone speakers
+mix = signal.lfilter(b, a, mix, axis=-1)
+mix *= gate                                          # gate after the filters so nothing rings into the silences
+music_d = music_d * gate
+sfx_g = sfx_g * gate
+
+
+# ----------------------------------------------------------------- loudness (ITU-R BS.1770-4) / true peak
 def lufs(x):
-    sos = np.array([[1.53512485958697, -2.69169618940638, 1.19839281085285, 1.0, -1.69065929318241, 0.73248077421585],
-                    [1.0, -2.0, 1.0, 1.0, -1.99004745483398, 0.99007225036621]])
-    y = signal.sosfilt(sos, x, axis=0)
-    blk, hop = int(0.4 * SR), int(0.1 * SR)
+    b1, a1 = [1.53512485958697, -2.69169618940638, 1.19839281085285], [1.0, -1.69065929318241, 0.73248077421585]
+    b2, a2 = [1.0, -2.0, 1.0], [1.0, -1.99004745483398, 0.99007225036621]
+    y = signal.lfilter(b2, a2, signal.lfilter(b1, a1, x, axis=-1), axis=-1)
+    blk, hop = S(0.4), S(0.1)
     ms = []
-    for i in range(0, len(y) - blk + 1, hop):
-        ms.append(np.mean(y[i:i + blk] ** 2, axis=0).sum())
+    for i in range(0, x.shape[1] - blk + 1, hop):
+        ms.append(np.sum(np.mean(y[:, i:i + blk] ** 2, axis=1)))
     ms = np.array(ms)
-    l = -0.691 + 10 * np.log10(ms + 1e-20)
-    g = ms[l > -70]
-    rel = -0.691 + 10 * np.log10(g.mean()) - 10
-    g2 = g[(-0.691 + 10 * np.log10(g)) > rel]
-    return -0.691 + 10 * np.log10(g2.mean())
+    lk = -0.691 + 10 * np.log10(ms + 1e-12)
+    g = ms[lk > -70]
+    rel = -0.691 + 10 * np.log10(np.mean(g)) - 10
+    g2 = ms[(lk > -70) & (lk > rel)]
+    return -0.691 + 10 * np.log10(np.mean(g2))
 
 
 def true_peak_db(x):
-    up = signal.resample_poly(x, 4, 1, axis=0)
+    up = signal.resample_poly(x, 4, 1, axis=-1)
     return 20 * np.log10(np.max(np.abs(up)) + 1e-12)
 
 
-def tp_limiter(x, ceil_db=-1.35, look_ms=2.0, rel_ms=80):
-    """前瞻式真峰值限幅：4 倍过采样检测，平滑增益"""
-    ceil = 10 ** (ceil_db / 20)
-    up = signal.resample_poly(x, 4, 1, axis=0)
-    pk = np.max(np.abs(up), axis=1).reshape(-1, 4).max(axis=1)[: len(x)]
-    if len(pk) < len(x):
-        pk = np.pad(pk, (0, len(x) - len(pk)))
-    need = np.minimum(1.0, ceil / np.maximum(pk, 1e-9))
-    la = int(look_ms / 1000 * SR)
-    # 向前取最小（前瞻）
-    from scipy.ndimage import minimum_filter1d
-    g = minimum_filter1d(need, size=2 * la + 1, mode='nearest')
-    # 释放平滑（单极点，只在增益回升时平滑）
-    a = np.exp(-1 / (rel_ms / 1000 * SR))
+def limiter(x, ceil_db=-1.6, look_ms=2.0, rel_ms=60.0):
+    c = 10 ** (ceil_db / 20)
+    up = np.abs(signal.resample_poly(x, 4, 1, axis=-1)).max(axis=0)
+    pk = up.reshape(-1, 4).max(axis=1)[:x.shape[1]]
+    g = np.minimum(1.0, c / np.maximum(pk, 1e-9))
+    L = max(1, int(SR * look_ms / 1000))
+    g = minimum_filter1d(g, size=2 * L + 1, origin=0)
+    # release: gain may only rise slowly
+    a = np.exp(-1 / (SR * rel_ms / 1000))
     out = np.empty_like(g)
     cur = 1.0
     for i in range(len(g)):
-        v = g[i]
-        cur = v if v < cur else a * cur + (1 - a) * v
+        gi = g[i]
+        cur = gi if gi < cur else gi + (cur - gi) * a
         out[i] = cur
-    out = minimum_filter1d(out, size=la + 1, mode='nearest')
-    sm = signal.lfilter([1 / (la + 1)] * (la + 1), [1], out)
-    sm = np.minimum(sm, out)
-    return x * sm[:, None]
+    out = uniform_filter1d(out, size=L, origin=0)
+    out = np.minimum(out, g)
+    return x * out
 
 
-def silence_mask():
-    tt = tarr(N)
-    m = np.ones(N)
-    r = int(0.004 * SR)
-    for a, b in SILENCES:
-        ia, ib = int(round(a * SR)), int(round(b * SR))
-        m[ia:ib] = 0
-        m[ia - r:ia] *= np.cos(np.linspace(0, np.pi / 2, r)) ** 2
-    # 结尾平滑衰减到静音
-    fe = (tt >= 15.8)
-    m[fe] *= np.cos(np.clip((tt[fe] - 15.8) / 0.2, 0, 1) * np.pi / 2) ** 2
-    m[-1] = 0
-    return m
+TARGET = -14.0
+gain = 1.0
+for it in range(6):
+    y = limiter(mix * gain)
+    l = lufs(y)
+    gain *= 10 ** ((TARGET - l) / 20)
+y = limiter(mix * gain)
 
+# smooth fade to silence at the very end
+fe = np.ones(N)
+i0, i1 = S(15.74), S(15.95)
+fe[i0:i1] = 0.5 + 0.5 * np.cos(np.linspace(0, np.pi, i1 - i0))
+fe[i1:] = 0
+y *= fe
+y[:, :1] *= 0
 
-def build(stems=False):
-    pad = make_pad()
-    arp = make_arp()
-    bass = make_bass()
-    drums = make_drums()
-    music = pad * 0.12 + arp * 0.085 + bass * 0.24 + drums * 0.34
-    music = reverb(music, 0.06)
-    # 15.0 最后一拍的和弦
-    place(music, final_chord(), 15.0, 0.22)
+L_final = lufs(y)
+TP = true_peak_db(y)
+pcm = np.clip(np.round(y.T * 32767), -32768, 32767).astype('<i2')
+out = os.path.join(HERE, 'music.wav')
+import wave
+with wave.open(out, 'wb') as w:
+    w.setnchannels(2)
+    w.setsampwidth(2)
+    w.setframerate(SR)
+    w.writeframes(pcm.tobytes())
+print('wrote %s  %.3f s  integrated %.2f LUFS  true peak %.2f dBTP' % (out, pcm.shape[0] / SR, L_final, TP))
 
-    sfx = np.zeros((N, 2))
-    place(sfx, sfx_open_whoosh(), 0.0, 0.55)
-    place(sfx, sfx_road(), 0.0, 0.16)
-    place(sfx, sfx_inhale(), 3.45, 0.55)
-    place(sfx, sfx_explosion(), 4.0, 0.95)
-    place(sfx, kick(1.6), 4.0, 0.7)
-    place(sfx, sfx_suction(), 4.4, 1.7)
-    sfx_cell_clicks(sfx)
-    place(sfx, sfx_pop(170), 6.5, 1.1, pan=-0.1)
-    place(sfx, sfx_pop(230), 6.5 + 4 / 60, 1.0, pan=0.1)
-    place(sfx, sfx_blip_ai(), 7.0, 0.95, pan=0.45)
-    place(sfx, sfx_power_on(), 7.5, 1.2)
-    place(sfx, sfx_reverse_swell(), 7.0, 0.8)
-    place(sfx, sfx_impact(1.0), 8.0, 0.95)
-    place(sfx, kick(1.6), 8.0, 0.6)
-    place(sfx, sfx_glitch(), 8.0, 0.36)
-    place(sfx, sfx_zip(), 8.5, 0.85, pan=-0.3)
-    for k, m in enumerate([69, 72, 74, 76, 79, 81]):
-        place(sfx, sfx_8bit(m), 9.0 + 0.5 * k, 0.8, pan=-0.6 + 0.24 * k)
-    place(sfx, sfx_ding(), 12.0, 0.42, pan=0.5)
-    place(sfx, sfx_logo(), 12.0, 0.75)
-    place(sfx, sfx_shimmer(), 12.1, 1.05)
-    place(sfx, sfx_riser(), 12.75, 1.5)
-    place(sfx, sfx_impact(0.8), 13.0, 0.75)
-    place(sfx, kick(1.3), 13.0, 0.55)
-    sfx_decode(sfx)
-    place(sfx, sfx_logo(), 13.7, 0.75)
-    place(sfx, sfx_breath(), 14.0, 1.2, pan=0.45)
-    place(sfx, sfx_crt(), 15.0, 1.0)
-    place(sfx, sfx_sparkle(), 15.5, 0.16)
-    place(sfx, sfx_beep(), 15.7, 0.32)
-
-    # 音效响起时音乐让一让（侧链闪避）
-    env = np.max(np.abs(sfx), axis=1)
-    att, rel = np.exp(-1 / (0.003 * SR)), np.exp(-1 / (0.14 * SR))
-    from scipy.signal import lfilter
-    e = lfilter([1 - rel], [1, -rel], env)
-    e = np.maximum(e, lfilter([1 - att], [1, -att], env))
-    duck = 1 / (1 + 3.2 * np.clip(e, 0, 1.5))
-    music_d = music * duck[:, None]
-
-    mix = music_d + sfx
-    # 母带：40 Hz 以下衰减、4–8 kHz 补亮
-    mix = filt(sos_hp(40, 4), mix)
-    mix = signal.sosfilt(biquad_peak(5600, 2.8, 0.7), mix, axis=0)
-    mask = silence_mask()
-    mix *= mask[:, None]
-    for _ in range(4):
-        L = lufs(mix)
-        mix *= 10 ** ((-14.0 - L) / 20)
-        mix = tp_limiter(mix, -1.35)
-        mix *= mask[:, None]
-    L = lufs(mix)
-    mix *= 10 ** ((-14.0 - L) / 20)
-    tp = true_peak_db(mix)
-    if tp > -1.25:
-        mix *= 10 ** ((-1.25 - tp) / 20)
-    mix *= mask[:, None]
-    if stems:
-        return mix, music_d, sfx, mask
-    return mix
-
-
-def write_wav(path, x):
-    from scipy.io import wavfile
-    y = np.clip(np.round(x * 32767), -32768, 32767).astype(np.int16)
-    assert y.shape == (N, 2)
-    wavfile.write(path, SR, y)
-
-
-if __name__ == '__main__':
-    mix = build()
-    write_wav(OUT, mix)
-    print(f'wrote {OUT}: {len(mix) / SR:.3f}s  LUFS={lufs(mix):.2f}  TP={true_peak_db(mix):.2f} dBTP')
+stems = os.environ.get('STEMS')
+if stems:
+    os.makedirs(stems, exist_ok=True)
+    np.save(os.path.join(stems, 'music.npy'), (music_d * gain).astype(np.float32))
+    np.save(os.path.join(stems, 'sfx.npy'), (1.15 * sfx_g * gain).astype(np.float32))
