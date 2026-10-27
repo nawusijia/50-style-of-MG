@@ -116,10 +116,16 @@ SPOTS.forEach(s => {
 });
 
 // ------------------------------------------------------------------ timeline constants (shared with gen_audio.py)
-const SWEEP0 = 4.8, SWEEPD = 0.3;                // char k is swept during [4.8+0.3k, 4.8+0.3k+0.3]
-const LAND = [9.0, 9.5, 10.0, 10.5, 11.0, 11.5]; // red pixel landings, then the period at 12.0
-const SUB_LOCK0 = 13.08, SUB_LOCKD = 0.045;      // subtitle lock times
-const GLOW_ON = 7.5;
+const SWEEP0 = 2.8, SWEEPD = 0.3;                // char k is swept during [2.8+0.3k, 2.8+0.3k+0.3]
+const LAND = [6.5, 7.0, 7.5, 8.0, 8.5, 9.0];     // red pixel landings, then the period at 9.5
+const T_PERIOD = 9.5;                            // period lands = glitch + subtitle reveal
+const T_HOLD = 6.0;                              // glow peak; slow push-in / sway / scanlines from here to the CRT
+const T_FLY = 6.0;                               // red pixel flies above 娜
+const SUB_T0 = 9.5, SUB_LOCK0 = 9.58, SUB_LOCKD = 0.045;   // subtitle appears / lock times (done by ~10.1)
+const T_SUBFL = 10.22;                           // subtitle shine + second sonic logo
+const T_GLINT = 10.1, T_GLINTD = 0.62;           // glint across the title in the hold
+const T_CRT = 11.0;                              // CRT switch-off
+const GLOW_ON = 5.5;
 
 function sweepU(k, t) { return c01((t - (SWEEP0 + SWEEPD * k)) / SWEEPD); }
 function revealedCols(k, t) {
@@ -129,11 +135,13 @@ function revealedCols(k, t) {
 function bandLX(k, t) { return OX + (GX[k] + GN * esine(sweepU(k, t))) * CELL; }
 
 // ------------------------------------------------------------------ opening: camera / road
+const T_STR = 1.4;                               // road straightens, car speeds into the sun
+const T_BOOM = 2.0;                              // sun explosion
 function speed(t) {
   if (t < 0.5) { const u = t / 0.5; return 950 + 1900 * (1 - u) * (1 - u); }
-  if (t < 3.5) { const u = (t - 0.5) / 3; return 950 + 1650 * u * u; }
-  if (t < 3.75) return lerp(2600, 520, eo((t - 3.5) / 0.25));
-  if (t < 4.0) return lerp(520, 300, (t - 3.75) / 0.25);
+  if (t < T_STR) { const u = (t - 0.5) / (T_STR - 0.5); return 950 + 1650 * u * u; }
+  if (t < 1.75) return lerp(2600, 520, eo((t - T_STR) / 0.35));
+  if (t < 2.0) return lerp(520, 300, (t - 1.75) / 0.25);
   return 300;
 }
 const ZT = new Float64Array(4401);
@@ -146,20 +154,22 @@ function tAtZ(z) {
   while (hi - lo > 1) { const m = (lo + hi) >> 1; if (ZT[m] <= z) lo = m; else hi = m; }
   return (lo + (z - ZT[lo]) / (ZT[hi] - ZT[lo])) / 1000;
 }
+const ROAD_K = 1.6;                              // bends tighten as the car accelerates
+const roadPh = tau => 4.49 * tau + ROAD_K * tau * tau - 0.98;
 function roadXt(tau) {
-  const tc = clamp(tau, -0.2, 3.6);
-  const dph = 4.49 + 1.5 * tc;
-  const A = lerp(0.19, 0.25, c01(tc / 3)) * speed(clamp(tau, 0, 3.5)) / dph * (1 - ss(2.95, 3.5, tau));
-  return A * Math.sin(4.49 * tau + 0.75 * tau * tau - 0.98);
+  const tc = clamp(tau, -0.2, T_STR + 0.1);
+  const dph = 4.49 + 2 * ROAD_K * tc;
+  const A = lerp(0.19, 0.25, c01(tc / T_STR)) * speed(clamp(tau, 0, T_STR)) / dph * (1 - ss(1.05, T_STR, tau));
+  return A * Math.sin(roadPh(tau));
 }
 const roadX = z => roadXt(tAtZ(z));
 function latAcc(tau) { const h = 0.01; return (roadXt(tau + h) - 2 * roadXt(tau) + roadXt(tau - h)) / (h * h); }
 let LATMAX = 1;
-(function () { let m = 0; for (let x = 0; x <= 3.5; x += 0.005) m = Math.max(m, Math.abs(latAcc(x))); LATMAX = m; })();
+(function () { let m = 0; for (let x = 0; x <= T_STR; x += 0.005) m = Math.max(m, Math.abs(latAcc(x))); LATMAX = m; })();
 // bank into the curve: proportional to the road's lateral acceleration (−sinΦ), growing from ~4.5° to ~7.5° as the bends tighten
-const bankAt = tau => -(Math.PI / 180) * lerp(4.6, 7.6, c01(tau / 3)) * Math.sin(4.49 * tau + 0.75 * tau * tau - 0.98) * (1 - ss(2.95, 3.5, tau));
-function suck(t) { return t < 3.6 ? 0 : 600 * ei((t - 3.6) / 0.4); }
-function carD(t) { return t < 3.5 ? 180 : 180 + 6500 * ei((t - 3.5) / 0.48); }
+const bankAt = tau => -(Math.PI / 180) * lerp(4.6, 7.6, c01(tau / T_STR)) * Math.sin(roadPh(tau)) * (1 - ss(1.05, T_STR, tau));
+function suck(t) { return t < 1.6 ? 0 : 600 * ei((t - 1.6) / 0.4); }
+function carD(t) { return t < T_STR ? 180 : 180 + 6500 * ei((t - T_STR) / 0.55); }
 
 function camOpen(t) {
   const zc = zcAt(t);
@@ -167,27 +177,27 @@ function camOpen(t) {
   const L = 320;
   const psi = Math.atan2(roadX(zc + L) - camX, L);
   let f = lerp(800, 900, eo(t / 0.6));
-  f *= 1 + 0.09 * eio((t - 3.72) / 0.28);
+  f *= 1 + 0.09 * eio((t - 1.72) / 0.28);
   const sp = speed(t) / 2000;
   const bump = (2.2 * Math.sin(t * 31) + 1.3 * Math.sin(t * 47 + 1.3) + 0.8 * Math.sin(t * 73 + 0.4)) * clamp(sp, 0.2, 1.3);
   return { zc, zg: zc - suck(t), camX, psi, f, yh: 520, camH: 34, mf: 1, gb: 1, roll: -bankAt(t), bump, road: 1, t };
 }
 function camWorld(t) {
   // after the explosion: terrain sinks, horizon drops, slow drift, gentle 3-D sway
-  const c4 = camOpen(4.0);
+  const c4 = camOpen(T_BOOM);
   const zg4 = c4.zg;
-  const dt = t - 4;
+  const dt = t - T_BOOM;
   const zg = zg4 - 4200 * 0.12 * (1 - Math.exp(-dt / 0.12)) + 110 * dt;
   const k = eo(dt / 0.7);
-  const tilt = 0.022 * Math.sin(2 * Math.PI * (t - 8) / 7) * ss(8, 9, t);
-  const psi = 0.03 * Math.sin(0.45 * dt) * ss(4, 5, t) + tilt;
+  const tilt = 0.022 * Math.sin(2 * Math.PI * (t - T_HOLD) / 7) * ss(T_HOLD, T_HOLD + 1, t);
+  const psi = 0.03 * Math.sin(0.45 * dt) * ss(2, 3, t) + tilt;
   const f = lerp(c4.f, 900, eio(dt / 0.8)) * VIEW.S;
   return { zc: 0, zg, camX: 0, psi, f, yh: lerp(520, 640, eio(dt / 0.8)) + VIEW.dyWorld, camH: 34,
            mf: 1 - eo(dt / 0.6), gb: lerp(1, 0.4, eo(dt / 0.6)) * (1 + 0.22 * kickPulse(t)),
-           roll: 0.0045 * Math.sin(2 * Math.PI * (t - 8) / 5.5) * ss(8, 9, t), bump: 0, road: 0, t };
+           roll: 0.0045 * Math.sin(2 * Math.PI * (t - T_HOLD) / 5.5) * ss(T_HOLD, T_HOLD + 1, t), bump: 0, road: 0, t };
 }
 function kickPulse(t) {
-  if (t < 4 || t >= 14.75) return 0;
+  if (t < T_BOOM || t >= 10.75) return 0;
   const b = Math.floor(t * 2) / 2; return Math.exp(-(t - b) / 0.12);
 }
 
@@ -317,7 +327,7 @@ function drawSun(cx, cy, R, cell, t, bright, white) {
 // ------------------------------------------------------------------ the car
 function carWorld(t) { const z = zcAt(t) + carD(t); return { z, x: roadX(z) }; }
 function drawCar(cam, t) {
-  const alpha = 1 - ss(3.9, 3.975, t);
+  const alpha = 1 - ss(1.86, 1.95, t);
   if (alpha <= 0) return;
   const cw = carWorld(t);
   const p = proj(cam, cw.x, 0, cw.z);
@@ -403,13 +413,14 @@ function drawCar(cam, t) {
 const VIEW = { S: 1, cx: 960, cy: 430, yaw: 0, dyWorld: 0 };
 function setView(t) {
   let S = 1;
-  for (const tn of [6.5, 7.0, 7.5]) S += 0.008 * eo((t - tn) / 0.28);
-  S += 0.03 * esine((t - 8) / 7);
-  S += 0.006 * eo((t - 13) / 0.4);
+  for (const tn of [4.5, 5.0, 5.5]) S += 0.008 * eo((t - tn) / 0.28);
+  S += 0.03 * esine((t - T_HOLD) / (T_CRT - T_HOLD));
+  S += 0.006 * eo((t - SUB_T0) / 0.4);
   VIEW.S = S;
-  VIEW.cx = 960 + 6 * Math.sin(2 * Math.PI * (t - 8) / 7) * ss(8, 9, t);
-  VIEW.cy = 430 - 40 * eo((t - 13.0) / 0.42) + 3 * Math.sin(2 * Math.PI * (t - 8) / 5.5) * ss(8, 9, t);
-  VIEW.yaw = 0.014 * Math.sin(2 * Math.PI * (t - 8) / 7) * ss(8, 9, t);
+  const sw = ss(T_HOLD, T_HOLD + 1, t);
+  VIEW.cx = 960 + 6 * Math.sin(2 * Math.PI * (t - T_HOLD) / 7) * sw;
+  VIEW.cy = 430 - 40 * eo((t - SUB_T0) / 0.42) + 3 * Math.sin(2 * Math.PI * (t - T_HOLD) / 5.5) * sw;
+  VIEW.yaw = 0.014 * Math.sin(2 * Math.PI * (t - T_HOLD) / 7) * sw;
   VIEW.dyWorld = 0;
 }
 const L2S = (lx, ly) => [VIEW.cx + VIEW.S * (lx - LCX), VIEW.cy + VIEW.S * (ly - LCY)];
@@ -440,11 +451,11 @@ const PCOLS = [RED, YEL, BEI];
 })();
 const NEB = { a: 840, b: 250 };
 function nebPos(p, t) {
-  const th = p.th + p.om * (t - 4.0);
+  const th = p.th + p.om * (t - T_BOOM);
   const s = Math.sin(th);
   return [960 + NEB.a * p.nr * Math.cos(th), VIEW.cy + NEB.b * p.nr * s + p.ty, s];
 }
-const T_EXP = 4.0 + 2 / 60;                     // particles leave after the 2–3 white frames
+const T_EXP = T_BOOM + 2 / 60;                     // particles leave after the 2–3 white frames
 function expPos(p, t) {
   const tau = Math.max(0, t - T_EXP);
   const e = (1 - Math.exp(-2.4 * tau)) / 2.4, dv = Math.exp(-2.4 * tau);
@@ -453,7 +464,7 @@ function expPos(p, t) {
   const R = SUNC.r;
   return [SUNC.x + (p.ox * R + p.vx * e) * ps, SUNC.y + (p.oy * R + p.vy * e) * ps, ps, p.vx * dv * ps, p.vy * dv * ps];
 }
-function blendW(t) { return eio((t - 4.18) / 0.6); }
+function blendW(t) { return eio((t - 2.18) / 0.6); }
 function particlePos(p, t) {
   const e = expPos(p, t);
   const w = blendW(t);
@@ -468,7 +479,7 @@ const CELLS = GLYPHS.map((g, k) => { const L = []; for (let r = 0; r < GN; r++) 
 function colLockTime(k, c) { const x = (c + 1) / GN; return SWEEP0 + SWEEPD * k + SWEEPD * Math.acos(1 - 2 * x) / Math.PI; }
 (function assign() {
   VIEW.cy = 430;
-  const idx = P.map((p, i) => [nebPos(p, 5.4)[0] + (hash2(i, 7) - 0.5) * 900, i]).sort((a, b) => a[0] - b[0]);
+  const idx = P.map((p, i) => [nebPos(p, 3.4)[0] + (hash2(i, 7) - 0.5) * 900, i]).sort((a, b) => a[0] - b[0]);
   for (let q = 0; q < idx.length; q++) {
     const p = P[idx[q][1]];
     const k = Math.min(4, Math.floor(q / idx.length * 5));
@@ -481,7 +492,7 @@ function colLockTime(k, c) { const x = (c + 1) / GN; return SWEEP0 + SWEEPD * k 
 const TL_SORTED = P.map(p => p.tL).sort((a, b) => a - b);
 function nebRemain(t) { let lo = 0, hi = NP; while (lo < hi) { const m = (lo + hi) >> 1; if (TL_SORTED[m] <= t) lo = m + 1; else hi = m; } return 1 - lo / NP; }
 function drawNebGlow(t) {
-  const a = 0.1 * nebRemain(t) * ss(4.3, 4.8, t);
+  const a = 0.1 * nebRemain(t) * ss(2.3, 2.8, t);
   if (a <= 0.002) return;
   ctx.save(); ctx.globalCompositeOperation = 'screen';
   ctx.translate(960, VIEW.cy); ctx.scale(1, NEB.b / NEB.a * 1.15);
@@ -512,7 +523,7 @@ function dipOf(k, part, t) {
     const tau = t - LAND[j]; if (tau < 0 || tau > 0.6) continue;
     d += tau < 0.035 ? 6 * eo2(tau / 0.035) : 6 * Math.exp(-(tau - 0.035) / 0.085) * Math.cos(2 * Math.PI * (tau - 0.035) / 0.25);
   }
-  if (k === 4) { const tau = t - 12.0; if (tau >= 0 && tau < 0.5) d += tau < 0.03 ? 3 * tau / 0.03 : 3 * Math.exp(-(tau - 0.03) / 0.08) * Math.cos(2 * Math.PI * (tau - 0.03) / 0.22); }
+  if (k === 4) { const tau = t - T_PERIOD; if (tau >= 0 && tau < 0.5) d += tau < 0.03 ? 3 * tau / 0.03 : 3 * Math.exp(-(tau - 0.03) / 0.08) * Math.cos(2 * Math.PI * (tau - 0.03) / 0.22); }
   return Math.round(d);
 }
 function hitFlash(k, part, t) {
@@ -530,9 +541,9 @@ function buildLayer(t) {
   lctx.globalCompositeOperation = 'source-over'; lctx.globalAlpha = 1;
   lctx.clearRect(0, 0, LW, LH);
   lctx.imageSmoothingEnabled = false;
-  const p1 = popOff(t, 6.5), p2 = popOff(t, 6.58);
+  const p1 = popOff(t, 4.5), p2 = popOff(t, 4.58);
   const o1 = Math.round(CELL * p1), o2 = Math.round(CELL * (1 + p2));
-  const aiWipe = c01((t - 7.0) / 0.075);                  // AI turns warm yellow, top→bottom wipe
+  const aiWipe = c01((t - 5.0) / 0.075);                  // AI turns warm yellow, top→bottom wipe
   for (let k = 0; k < 5; k++) {
     const rc = revealedCols(k, t); if (rc <= 0) continue;
     const spr = SPR[k];
@@ -562,13 +573,13 @@ function buildLayer(t) {
       }
       // flash when the red pixel lands on it
       let fl = hitFlash(k, pi, t);
-      if (k === 4 && aiWipe > 0 && aiWipe < 1.5) fl = Math.max(fl, 0.55 * Math.exp(-(t - 7.0) / 0.1));
+      if (k === 4 && aiWipe > 0 && aiWipe < 1.5) fl = Math.max(fl, 0.55 * Math.exp(-(t - 5.0) / 0.1));
       if (fl > 0.01) { lctx.globalAlpha = fl; lctx.drawImage(spr.hot, c0, 0, w, GN, x0, y0, w * CELL, GN * CELL); lctx.globalAlpha = 1; }
     }
   }
-  // 12–13 s: a glint sweeps across the finished title (cell-quantised so the pixels stay crisp)
-  if (t > 12.05 && t < 12.95) {
-    const u = eio((t - 12.05) / 0.85);
+  // hold (10.1–10.72 s): a glint sweeps across the finished title (cell-quantised so the pixels stay crisp)
+  if (t > T_GLINT && t < T_GLINT + T_GLINTD) {
+    const u = eio((t - T_GLINT) / T_GLINTD);
     const gx = lerp(OX - 260, OX + TITLE_W + 300, u);
     for (let k = 0; k < 5; k++) {
       const spr = SPR[k];
@@ -618,9 +629,9 @@ function glowLevel(k, t) {
   let a;
   if (tau < 0.16) { const fl = [1, 0, 0.7, 0, 0, 1, 0.4, 1, 1, 0.8]; a = fl[Math.min(9, Math.floor(tau / 0.016))] * 0.35; }
   else a = 0.35;
-  const ramp = eio((t - 7.66) / 0.34);                        // peak exactly at 8.0
+  const ramp = eio((t - (T_HOLD - 0.34)) / 0.34);             // peak exactly at 6.0
   a = lerp(a * 0.75, 0.46, ramp);
-  if (t > 8.0) a = lerp(0.46, 0.2, eo((t - 8.0) / 0.7));
+  if (t > T_HOLD) a = lerp(0.46, 0.2, eo((t - T_HOLD) / 0.7));
   return a;
 }
 
@@ -633,52 +644,53 @@ function penState(t) {
   // returns {x,y (screen; x centre, y bottom), w,h (screen px), glow}
   const S = VIEW.S;
   const top = OY - 46;
-  if (t < 4.0 + 1 / 60) return null;
-  if (t < 4.8) {
-    const u = eio((t - 4.05) / 0.72);
+  if (t < T_BOOM + 1 / 60) return null;
+  if (t < SWEEP0) {
+    const u = eio((t - (T_BOOM + 0.05)) / 0.72);
     const a = [SUNC.x, SUNC.y + 11];
     const b = L2S(OX + 1 * CELL, top);
     const lift = -90 * Math.sin(Math.PI * u);
     return { x: lerp(a[0], b[0], u), y: lerp(a[1], b[1], u) + lift + 3 * Math.sin(t * 9), w: 22 * S, h: 22 * S, glow: 1 };
   }
-  if (t < 6.3) {
+  if (t < SWEEP0 + 5 * SWEEPD) {
     const k = Math.min(4, Math.floor((t - SWEEP0) / SWEEPD));
     const lx = bandLX(k, t);
     const p = L2S(lx, top + 3 * Math.sin(t * 9));
     return { x: p[0], y: p[1], w: 22 * S, h: 22 * S, glow: 1 };
   }
-  const rest = () => L2S(OX + TITLE_W + 30, OY - 24 + 5 * Math.sin(2 * Math.PI * (t - 6.6) / 1.3));
-  if (t < 6.6) {
-    const u = eio((t - 6.3) / 0.3);
-    const a = L2S(bandLX(4, 6.3), top), b = rest();
+  const T_SW1 = SWEEP0 + 5 * SWEEPD, T_REST = T_SW1 + 0.3;
+  const rest = () => L2S(OX + TITLE_W + 30, OY - 24 + 5 * Math.sin(2 * Math.PI * (t - T_REST) / 1.3));
+  if (t < T_REST) {
+    const u = eio((t - T_SW1) / 0.3);
+    const a = L2S(bandLX(4, T_SW1), top), b = rest();
     return { x: lerp(a[0], b[0], u), y: lerp(a[1], b[1], u) - 30 * Math.sin(Math.PI * u), w: 22 * S, h: 22 * S, glow: 1 };
   }
-  if (t < 8.5) { const b = rest(); return { x: b[0] + 2 * Math.sin(t * 2.1), y: b[1], w: 22 * S, h: 22 * S, glow: 1 }; }
+  if (t < T_FLY) { const b = rest(); return { x: b[0] + 2 * Math.sin(t * 2.1), y: b[1], w: 22 * S, h: 22 * S, glow: 1 }; }
   const s0 = SPOTS[0];
   const hoverY = s0.ly - 150;
-  if (t < 9.0) {
-    if (t < 8.76) {     // fly to above 娜 and grow to 80 px
-      const u = eio((t - 8.5) / 0.26);
-      const tr = 6.6 + 1.9;
-      const a = L2S(OX + TITLE_W + 30, OY - 24 + 5 * Math.sin(2 * Math.PI * (8.5 - 6.6) / 1.3));
+  if (t < LAND[0]) {
+    if (t < T_FLY + 0.26) {     // fly to above 娜 and grow to 80 px
+      const u = eio((t - T_FLY) / 0.26);
+      const a = L2S(OX + TITLE_W + 30, OY - 24 + 5 * Math.sin(2 * Math.PI * (T_FLY - T_REST) / 1.3));
+      a[0] += 2 * Math.sin(T_FLY * 2.1);
       const b = L2S(s0.lx, hoverY);
       const sz = lerp(22, 80, u);
       return { x: lerp(a[0], b[0], u), y: lerp(a[1], b[1], u) - 40 * Math.sin(Math.PI * u), w: sz * S, h: sz * S, glow: 1 };
     }
     const b = L2S(s0.lx, hoverY);
-    if (t < 8.87) {     // anticipation squash
-      const u = (t - 8.76) / 0.11; const q = Math.sin(Math.PI * u) * 0.18;
+    if (t < T_FLY + 0.37) {     // anticipation squash
+      const u = (t - (T_FLY + 0.26)) / 0.11; const q = Math.sin(Math.PI * u) * 0.18;
       return { x: b[0], y: b[1] - 6 * Math.sin(Math.PI * u), w: 80 * S * (1 + q), h: 80 * S / (1 + q), glow: 1 };
     }
-    const u = (t - 8.87) / 0.13;   // drop (gravity)
+    const u = (t - (T_FLY + 0.37)) / 0.13;   // drop (gravity)
     const c = L2S(s0.lx, s0.ly);
     const y = lerp(b[1], c[1], u * u);
     const st = 1 + 0.3 * u;
     return { x: b[0], y, w: 80 * S / st, h: 80 * S * st, glow: 1 };
   }
-  if (t < 12.0 + 0.0001 || true) {
+  if (t < T_PERIOD + 0.0001 || true) {
     // jumping: landing j at LAND[j]; contact 0.1 s, then a ballistic hop to the next spot
-    if (t < 12.0) {
+    if (t < T_PERIOD) {
       let j = 0; for (let q = 0; q < LAND.length; q++) if (t >= LAND[q]) j = q;
       const tau = t - LAND[j];
       const sj = SPOTS[j];
@@ -705,7 +717,7 @@ function penState(t) {
   }
   // period
   const c = L2S(PERIOD_LX, PERIOD_LY + dipOf(4, 1, t) * 0);
-  const tau = t - 12.0;
+  const tau = t - T_PERIOD;
   if (tau < 0.3) {
     const sq = tau < 0.03 ? eo2(tau / 0.03) : 1 - eio((tau - 0.03) / 0.1);
     const shrink = eoBack((tau - 0.02) / 0.26, 1.6);
@@ -713,8 +725,8 @@ function penState(t) {
     return { x: c[0], y: c[1], w: base * S * (1 + 0.5 * sq), h: base * S * (1 - 0.4 * sq), glow: 1 + 1.2 * Math.exp(-tau / 0.08) };
   }
   let glow = 1;
-  if (t > 14.0 && t < 14.75) glow = 1 + 0.55 * Math.sin(Math.PI * (t - 14.0) / 0.375) ** 2;
-  if (t > 13.68 && t < 14.0) glow += 0.6 * Math.exp(-Math.pow((t - 13.72) / 0.07, 2));
+  if (t > T_GLINT && t < 10.75) glow = 1 + 0.55 * Math.sin(Math.PI * (t - T_GLINT) / 0.325) ** 2;
+  if (t > T_SUBFL - 0.04 && t < T_SUBFL + 0.28) glow += 0.6 * Math.exp(-Math.pow((t - T_SUBFL) / 0.07, 2));
   return { x: c[0], y: c[1], w: 22 * S, h: 22 * S, glow };
 }
 function drawPen(c, ps, alpha) {
@@ -745,7 +757,7 @@ function drawPen(c, ps, alpha) {
 const DEBRIS = [];
 (function () {
   const r = mulberry32(555);
-  const all = LAND.concat([12.0]);
+  const all = LAND.concat([T_PERIOD]);
   all.forEach((T, j) => {
     for (let i = 0; i < 9; i++) DEBRIS.push({ T, j, vx: (r() - 0.5) * 520, vy: -180 - r() * 420, s: [6, 8, 8, 11][Math.floor(r() * 4)], c: r() < 0.55 ? RED : (r() < 0.6 ? BEI : YEL), life: 0.38 + r() * 0.2 });
   });
@@ -781,16 +793,16 @@ const MASK = mk(1200, 220);
 })();
 function subY() { return L2S(0, LCY + 236)[1]; }
 function drawSubMask(t) {
-  if (t < 13.0) return;
-  const a = c01((t - 13.0) / 0.12);
+  if (t < SUB_T0) return;
+  const a = c01((t - SUB_T0) / 0.12);
   const S = VIEW.S, w = (SUB_W + 150) * S * 1.1, h = 220 * S * 0.62;
   ctx.globalAlpha = a; ctx.drawImage(MASK, VIEW.cx - w / 2, subY() - h / 2, w, h); ctx.globalAlpha = 1;
 }
 function drawSubtitle(t) {
-  if (t < 13.0) return;
+  if (t < SUB_T0) return;
   const S = VIEW.S, y = subY();
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-  const appear = eo((t - 13.0) / 0.07);
+  const appear = eo((t - SUB_T0) / 0.07);
   for (let i = 0; i < SUB.length; i++) {
     const lt = SUB_LOCK0 + SUB_LOCKD * i;
     const x = VIEW.cx + SUB_X[i] * S;
@@ -805,7 +817,7 @@ function drawSubtitle(t) {
       const u = (t - lt) / 0.16;
       sc = 1 + 0.22 * (1 - eo(u));
       col = mixc(HOT, BEI, eo(u));
-      const gl = Math.exp(-Math.pow((t - (13.72 + 0.022 * i)) / 0.05, 2));
+      const gl = Math.exp(-Math.pow((t - (T_SUBFL + 0.022 * i)) / 0.05, 2));
       col = mixc(col, HOT, 0.75 * gl);
     }
     ctx.save();
@@ -850,9 +862,9 @@ function drawOpening(t) {
   drawStars(t, -cam.psi * 700 - t * 8, cam.yh, 1);
   // sun
   const sunX = W / 2 - cam.f * Math.tan(cam.psi);
-  let R = 250 * (1 - 0.48 * eio((t - 3.5) / 0.4833));
-  const bright = eio((t - 3.5) / 0.4833);
-  const white = t >= 4.0;
+  let R = 250 * (1 - 0.48 * eio((t - 1.5) / 0.4833));
+  const bright = eio((t - 1.5) / 0.4833);
+  const white = t >= T_BOOM;
   if (white) R = 250 * 0.52 * 1.1;
   const sunY = cam.yh - 0.5 * 250;
   // faint horizon haze
@@ -879,7 +891,7 @@ function drawWorld(t) {
   ctx.fillStyle = hz; ctx.fillRect(-300, cam.yh - 140, W + 600, 146);
   drawTerrain(cam);
   // ceiling grid (mirrored, dimmer) so the upper frame is not empty
-  const ca = ss(4.25, 5.0, t);
+  const ca = ss(2.25, 3.0, t);
   if (ca > 0) {
     const cc = Object.assign({}, cam, { camH: cam.camH - 300, mf: 0, gb: cam.gb * 0.85 * ca, fadeFar: 2200, fadePow: 1.2, road: 0 });
     drawTerrain(cc);
@@ -890,12 +902,12 @@ function drawWorld(t) {
 }
 
 function drawParticles(t, flying) {
-  if (t < T_EXP || t > 6.75) return;
+  if (t < T_EXP || t > 4.75) return;
   const paths = new Map();
   const trails = new Map();
   const add = (map, key) => { let p = map.get(key); if (!p) { p = new Path2D(); map.set(key, p); } return p; };
   const whiten = c01(1 - (t - T_EXP) / 0.16);
-  const dim = eo((t - 4.0) / 0.2);
+  const dim = eo((t - T_BOOM) / 0.2);
   for (let i = 0; i < NP; i++) {
     const p = P[i];
     if (t >= p.tL) continue;
@@ -976,7 +988,7 @@ function drawTitleSeg(t, withPen) {
   drawWorld(t);
   drawSubMask(t);
   // flash of the burst (local, soft)
-  if (t >= 4.0 && t < 4.4) {
+  if (t >= T_BOOM && t < T_BOOM + 0.4) {
     const a = t < T_EXP + 1 / 60 ? 0.55 : 0.55 * Math.exp(-(t - T_EXP) / 0.08);
     const R = 420;
     const g = ctx.createRadialGradient(SUNC.x, SUNC.y, 0, SUNC.x, SUNC.y, R);
@@ -994,7 +1006,7 @@ function drawTitleSeg(t, withPen) {
       drawLayer(GLOW, 0, 0, true, k => {
         let a = glowLevel(k, t);
         for (let j = 0; j < LAND.length; j++) if (SPOTS[j].k === k) { const tau = t - LAND[j]; if (tau >= 0 && tau < 0.5) a += 0.25 * Math.exp(-tau / 0.12); }
-        if (t > 12.05 && t < 13) a += 0.2 * Math.sin(Math.PI * (t - 12.05) / 0.95);
+        if (t > T_GLINT && t < T_GLINT + T_GLINTD + 0.05) a += 0.2 * Math.sin(Math.PI * (t - T_GLINT) / (T_GLINTD + 0.05));
         return a;
       });
       ctx.restore();
@@ -1018,8 +1030,8 @@ function drawTitleSeg(t, withPen) {
 }
 
 function glitchI(t) {
-  if (t >= 8.0 && t < 8.0 + 11 / 60) return 1;
-  if (t >= 8.0 + 13 / 60 && t < 8.0 + 23 / 60) return 0.55;
+  if (t >= T_PERIOD && t < T_PERIOD + 11 / 60) return 1;
+  if (t >= T_PERIOD + 13 / 60 && t < T_PERIOD + 23 / 60) return 0.55;
   return 0;
 }
 
@@ -1028,9 +1040,9 @@ function drawScene(t) {
   ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
   ctx.fillStyle = BGS; ctx.fillRect(0, 0, W, H);
   setView(t);
-  if (t < 4.0 + 3 / 60) drawOpening(t);
-  if (t >= 4.0 + 3 / 60) drawTitleSeg(t, t < 15.0);
-  else if (t >= 4.0) { drawPen(ctx, penState(t), 1); }
+  if (t < T_BOOM + 3 / 60) drawOpening(t);
+  if (t >= T_BOOM + 3 / 60) drawTitleSeg(t, t < T_CRT);
+  else if (t >= T_BOOM) { drawPen(ctx, penState(t), 1); }
 }
 
 // ------------------------------------------------------------------ post (glitch slices, CRT, scanlines, grain, vignette)
@@ -1038,9 +1050,9 @@ function post(t) {
   sctx.setTransform(1, 0, 0, 1, 0, 0);
   sctx.globalAlpha = 1; sctx.globalCompositeOperation = 'source-over';
   sctx.imageSmoothingEnabled = true;
-  if (t >= 15.79) { sctx.fillStyle = '#000'; sctx.fillRect(0, 0, W, H); return; }
+  if (t >= T_CRT + 0.79) { sctx.fillStyle = '#000'; sctx.fillRect(0, 0, W, H); return; }
   const gi = glitchI(t);
-  if (t >= 15.0) {
+  if (t >= T_CRT) {
     postCRT(t);
   } else if (gi > 0) {
     const r = mulberry32(Math.floor(t * 30) * 977 + 13);
@@ -1062,15 +1074,15 @@ function post(t) {
   } else {
     sctx.drawImage(SC, 0, 0);
   }
-  if (t >= 8.0 && t < 15.0) {
+  if (t >= T_HOLD && t < T_CRT) {
     sctx.globalAlpha = 0.07; sctx.drawImage(SCAN, 0, -((t * 16) % 4)); sctx.globalAlpha = 1;
     // slow rolling band
-    const by = ((t - 8) * 160) % (H + 400) - 200;
+    const by = ((t - T_HOLD) * 160) % (H + 400) - 200;
     const g = sctx.createLinearGradient(0, by - 120, 0, by + 120);
     g.addColorStop(0, 'rgba(236,232,225,0)'); g.addColorStop(0.5, 'rgba(236,232,225,0.018)'); g.addColorStop(1, 'rgba(236,232,225,0)');
     sctx.fillStyle = g; sctx.fillRect(0, by - 120, W, 240);
   }
-  if (t < 15.0) {
+  if (t < T_CRT) {
     const fr = Math.floor(t * 60 + 1e-6);
     const pat = GRAIN[fr % 4];
     const r = mulberry32(fr * 7919 + 3);
@@ -1078,13 +1090,12 @@ function post(t) {
     sctx.fillStyle = pat; sctx.fillRect(0, 0, W, H);
     sctx.drawImage(VIG, 0, 0);
   }
-  if (t >= 15.0) drawFinalDot(t);
+  if (t >= T_CRT) drawFinalDot(t);
 }
-let PERIOD_AT_15 = null;
 function postCRT(t) {
   sctx.fillStyle = '#000'; sctx.fillRect(0, 0, W, H);
   const cy = 540;
-  const a = (t - 15.0) / 0.09;
+  const a = (t - T_CRT) / 0.09;
   if (a < 1) {
     const k = ei2(a);
     const sy = lerp(1, 0.004, k), hh = Math.max(3, H * sy);
@@ -1098,7 +1109,7 @@ function postCRT(t) {
     sctx.globalCompositeOperation = 'screen'; sctx.fillStyle = g; sctx.fillRect(0, cy - hh / 2 - 40, W, hh + 80); sctx.globalCompositeOperation = 'source-over';
     sctx.globalAlpha = 1 - k; sctx.drawImage(VIG, 0, 0); sctx.globalAlpha = 1;
   } else {
-    const b = (t - 15.09) / 0.15;
+    const b = (t - (T_CRT + 0.09)) / 0.15;
     if (b < 1) {
       const wl = W * (1 - ei2(b)) + 4;
       const fade = 1 - 0.5 * b;
@@ -1117,18 +1128,19 @@ function postCRT(t) {
   }
 }
 function drawFinalDot(t) {
-  // the red period survives the CRT switch-off, slides to the centre, flashes and dies at 15.7 s
-  const v = setViewReturn(15.0);
+  // the red period survives the CRT switch-off, slides to the centre, flashes and dies at 11.7 s
+  const v = setViewReturn(T_CRT);
   const p0 = v.pos, s0 = v.size;
-  const u = eio((t - 15.1) / 0.4);
+  const u = eio((t - (T_CRT + 0.1)) / 0.4);
   const x = lerp(p0[0], W / 2, u), y = lerp(p0[1], 540 + s0 / 2, u);
   let size = s0, glow = 1.2, alpha = 1;
-  const fl = Math.exp(-Math.pow((t - 15.5) / 0.045, 2));
+  const tf = T_CRT + 0.5, td = T_CRT + 0.7;
+  const fl = Math.exp(-Math.pow((t - tf) / 0.045, 2));
   size *= 1 + 0.45 * fl; glow += 1.6 * fl;
-  if (t > 15.5 && t < 15.7) glow += 0.25 * Math.sin(Math.PI * (t - 15.5) / 0.2);
-  if (t >= 15.7) { const k = c01((t - 15.7) / 0.05); size *= 1 - 0.85 * ei2(k); alpha = 1 - k; glow *= 1 - k; }
+  if (t > tf && t < td) glow += 0.25 * Math.sin(Math.PI * (t - tf) / 0.2);
+  if (t >= td) { const k = c01((t - td) / 0.05); size *= 1 - 0.85 * ei2(k); alpha = 1 - k; glow *= 1 - k; }
   if (alpha <= 0.001) {
-    const k = c01((t - 15.75) / 0.04);
+    const k = c01((t - (td + 0.05)) / 0.04);
     if (k < 1) { const g = sctx.createRadialGradient(W / 2, 540, 0, W / 2, 540, 30); g.addColorStop(0, rgba(RED, 0.25 * (1 - k))); g.addColorStop(1, rgba(RED, 0)); sctx.fillStyle = g; sctx.fillRect(W / 2 - 30, 510, 60, 60); }
     return;
   }
@@ -1142,14 +1154,14 @@ function setViewReturn(t) {
 
 // ------------------------------------------------------------------ init derived values
 (function () {
-  const cam = camOpen(4.0);
+  const cam = camOpen(T_BOOM);
   SUNC.x = W / 2 - cam.f * Math.tan(cam.psi);
   SUNC.y = cam.yh - 0.5 * 250 + cam.bump;
   SUNC.r = 250 * 0.52;
 })();
 
 function draw(t) {
-  t = clamp(+t || 0, 0, 16);
+  t = clamp(+t || 0, 0, 12);
   drawScene(t);
   post(t);
 }
@@ -1175,7 +1187,7 @@ overlay.querySelector('button').addEventListener('click', () => {
   if (p && p.catch) p.catch(() => { playing = false; overlay.classList.remove('hidden'); });
   requestAnimationFrame(loop);
 });
-audio.addEventListener('ended', () => { playing = false; draw(16); overlay.classList.remove('hidden'); });
+audio.addEventListener('ended', () => { playing = false; draw(12); overlay.classList.remove('hidden'); });
 })();
 </script>
 </body>

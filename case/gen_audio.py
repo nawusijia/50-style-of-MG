@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Original score + sound design for the 16 s 娜乌斯嘉AI channel ident.
+"""Original score + sound design for the 12 s 娜乌斯嘉AI channel ident.
 
-120 BPM, 4/4, A minor, Am–F–C–G.  48 kHz / 16-bit / stereo / exactly 16.0 s.
+120 BPM, 4/4, A minor, Am–F–C–G.  48 kHz / 16-bit / stereo / exactly 12.0 s (6 bars).
 Every sound effect is placed on the frame of its visual action in index.html
 (the timing constants below mirror the ones in the page).
 
@@ -14,19 +14,26 @@ from scipy import signal
 from scipy.ndimage import maximum_filter1d, minimum_filter1d, uniform_filter1d
 
 SR = 48000
-DUR = 16.0
+DUR = 12.0
 N = int(SR * DUR)
 HERE = os.path.dirname(os.path.abspath(__file__))
 rng = np.random.default_rng(20261027)
 
 # ----------------------------------------------------------------- timeline (mirrors index.html)
-SWEEP0, SWEEPD = 4.8, 0.3
-LAND = [9.0, 9.5, 10.0, 10.5, 11.0, 11.5]
-PERIOD_T = 12.0
-SUB_LOCK0, SUB_LOCKD, SUB_N = 13.08, 0.045, 11
-GLITCH1 = (8.0, 8.0 + 11 / 60)
-GLITCH2 = (8.0 + 13 / 60, 8.0 + 23 / 60)
-SILENCES = [(3.75, 4.0), (14.75, 15.0)]
+T_STR = 1.4                      # road straightens, car speeds into the sun
+T_BOOM = 2.0                     # sun explosion
+SWEEP0, SWEEPD = 2.8, 0.3
+T_FLY = 6.0                      # red pixel flies above 娜
+LAND = [6.5, 7.0, 7.5, 8.0, 8.5, 9.0]
+PERIOD_T = 9.5                   # period lands + glitch + subtitle reveal (all together)
+SUB_T0 = 9.5
+SUB_LOCK0, SUB_LOCKD, SUB_N = 9.58, 0.045, 11
+T_SUBFL = 10.2                   # subtitle locked: second sonic logo
+T_GLINT, T_GLINTD = 10.1, 0.62   # glint across the title in the hold
+T_CRT = 11.0
+GLITCH1 = (PERIOD_T, PERIOD_T + 11 / 60)
+GLITCH2 = (PERIOD_T + 13 / 60, PERIOD_T + 23 / 60)
+SILENCES = [(1.75, 2.0), (10.75, 11.0)]
 
 
 def S(t):
@@ -193,7 +200,7 @@ mus_arp = np.zeros((2, N))
 mus_bass = np.zeros((2, N))
 mus_drm = np.zeros((2, N))
 
-PROG = ['Am', 'F', 'C', 'G', 'Am', 'F', 'C', 'G']
+PROG = ['Am', 'F', 'C', 'G', 'Am', 'G']
 PAD = {'Am': [57, 60, 64], 'F': [57, 60, 65], 'C': [55, 60, 64], 'G': [55, 59, 62]}
 ROOT = {'Am': 33, 'F': 29, 'C': 36, 'G': 31}
 ARP = {'Am': [69, 72, 76, 81], 'F': [69, 72, 77, 81], 'C': [67, 72, 76, 79], 'G': [67, 71, 74, 79]}
@@ -225,22 +232,22 @@ def pad_chord(notes, dur, att=0.06, rel=0.35):
 
 for b, ch in enumerate(PROG):
     t0 = 2.0 * b
-    if b == 7:
+    if b == len(PROG) - 1:
         x = pad_chord(PAD['G'], 0.75, att=0.04, rel=0.06)
     else:
         x = pad_chord(PAD[ch], 2.0, att=0.08 if b else 0.012)
     addm(mus_pad, x, t0)
 # final resolve on Am at the CRT switch-off
-addm(mus_pad, fade_in(pad_chord(PAD['Am'], 0.05, att=0.004, rel=0.9), 2), 15.0, 1.1)
+addm(mus_pad, fade_in(pad_chord(PAD['Am'], 0.05, att=0.004, rel=0.9), 2), T_CRT, 1.1)
 
 pad_open = filt(mus_pad, 'low', 1500, 2)
 pad_muff = filt(mus_pad, 'low', 520, 2)
 tN = tt(N)
-xf = np.clip((tN - 3.75) / 0.25, 0, 1)
+xf = np.clip((tN - 1.75) / 0.25, 0, 1)
 mus_pad = pad_muff * (1 - xf) * 0.62 + pad_open * xf * 0.7
 # synthwave pump from the kick
 pump = np.ones(N)
-for k in range(8, 30):
+for k in range(4, 22):
     b = k * 0.5
     i0 = S(b)
     seg = tN[i0:] - b
@@ -251,7 +258,7 @@ mus_pad *= pump
 for b, ch in enumerate(PROG):
     for s in range(16):
         t0 = 2.0 * b + 0.125 * s
-        if t0 >= 14.75 or 3.75 <= t0 < 4.0:
+        if t0 >= 10.75 or 1.75 <= t0 < 2.0:
             continue
         m = ARP[ch][ARP_PAT[s]]
         n = S(0.16)
@@ -263,22 +270,22 @@ for b, ch in enumerate(PROG):
         addm(mus_arp, v, t0, acc, pan=(-0.25 if s % 2 else 0.25))
         ve = filt(v, 'low', 2400, 1)
         for d, g, pn in ((0.1875, 0.32, -0.7), (0.375, 0.22, 0.7), (0.5625, 0.12, -0.7)):
-            if t0 + d < 14.75 and not (3.75 <= t0 + d < 4.0):
+            if t0 + d < 10.75 and not (1.75 <= t0 + d < 2.0):
                 addm(mus_arp, ve, t0 + d, acc * g, pan=pn)
 arp_muff = filt(mus_arp, 'low', 900, 2)
 mus_arp = arp_muff * (1 - xf) * 0.75 + mus_arp * xf
 
-# bass: synthwave 8ths with a short glide, 4.0 → 14.75, plus the final note
+# bass: synthwave 8ths with a short glide, 2.0 → 10.75, plus the final note
 BASS_PAT = [0, 0, 12, 0, 0, 12, 0, 12]
 events = []
-for b in range(2, 8):
+for b in range(1, 6):
     ch = PROG[b]
     for e8 in range(8):
         t0 = 2.0 * b + 0.25 * e8
-        if t0 >= 14.75:
+        if t0 >= 10.75:
             continue
         events.append((t0, ROOT[ch] + BASS_PAT[e8], 0.215))
-events.append((15.0, 33, 0.75))
+events.append((T_CRT, 33, 0.75))
 prev_f = mtof(events[0][1])
 for (t0, m, d) in events:
     n = S(d + 0.03)
@@ -324,19 +331,19 @@ def hat(open_=False):
     return fade_in(x, 2.0)
 
 
-for k in range(8, 30):                     # 4.0 … 14.5
+for k in range(4, 22):                     # 2.0 … 10.5
     b = k * 0.5
     addm(mus_drm, kick(), b, 0.95)
-for b in range(2, 8):
+for b in range(1, 6):
     for off in (0.5, 1.5):
         addm(mus_drm, snare(), 2.0 * b + off, 0.55, pan=0.05)
-for k in range(0, 59):
+for k in range(0, 43):
     t0 = k * 0.25
-    if 3.75 <= t0 < 4.0 or t0 >= 14.75:
+    if 1.75 <= t0 < 2.0 or t0 >= 10.75:
         continue
     off = (k % 2 == 1)
     addm(mus_drm, hat(open_=(off and k % 8 == 7)), t0, 0.16 if off else 0.1, pan=0.3)
-addm(mus_drm, kick(1.6), 15.0, 1.0)
+addm(mus_drm, kick(1.6), T_CRT, 1.0)
 
 music = 0.32 * mus_pad + 0.30 * mus_arp + 0.42 * mus_bass + 0.62 * mus_drm
 
@@ -379,13 +386,13 @@ add(sfx, boom(90, 40, 0.18, 0.5), 0.0, 0.35)
 def speed(t):
     t = np.asarray(t)
     return np.where(t < 0.5, 950 + 1900 * (1 - t / 0.5) ** 2,
-                    np.where(t < 3.5, 950 + 1650 * ((t - 0.5) / 3) ** 2, 2600.0))
+                    np.where(t < T_STR, 950 + 1650 * ((t - 0.5) / (T_STR - 0.5)) ** 2, 2600.0))
 
 
-n = S(3.75)
+n = S(1.75)
 t = tt(n)
 sp = speed(t) / 2600
-away = np.clip((t - 3.5) / 0.25, 0, 1)
+away = np.clip((t - T_STR) / 0.35, 0, 1)
 f_eng = (46 + 40 * sp) * (1 + 0.5 * away) * (1 + 0.006 * np.sin(2 * np.pi * 7 * t))
 eng = 0.6 * saw(f_eng, n) + 0.5 * square(f_eng * 0.5, n, 0.4)
 eng = svf_lp(eng, 260 + 700 * sp)
@@ -393,14 +400,14 @@ e = np.clip(t / 0.05, 0, 1) * (0.55 + 0.45 * sp) * (1 - 0.75 * away)
 e[-S(0.008):] *= np.linspace(1, 0, S(0.008))
 amb = np.zeros((2, N))
 add(amb, eng * e, 0.0, 0.2)
-# sun inhales (3.45–3.75): rising swell, cut by the silence
+# sun inhales (1.45–1.75): rising swell, cut by the silence
 n = S(0.3)
 t = tt(n)
 sw = svf_bp(noise(n), 400 * (8 ** (t / 0.3)), 1.4) * (t / 0.3) ** 2
-add(sfx, fade_out(sw, 6), 3.45, 0.45)
+add(sfx, fade_out(sw, 6), 1.45, 0.45)
 
-# 4.0 the pixel sun bursts: low impact + glass + sand that sweeps down and stops in 0.8 s
-add(sfx, boom(64, 30, 0.42, 1.1), 4.0, 1.0)
+# 2.0 the pixel sun bursts: low impact + glass + sand that sweeps down and stops in 0.8 s
+add(sfx, boom(64, 30, 0.42, 1.1), T_BOOM, 1.0)
 gl = np.zeros(S(0.6))
 for i in range(60):
     f = rng.uniform(2300, 9000)
@@ -411,7 +418,7 @@ for i in range(60):
         continue
     gl[o:o + m] += rng.uniform(0.3, 1.0) * sine(f, m, rng.random()) * np.exp(-tt(m) / d)
 gl += 1.2 * filt(noise(len(gl)), 'band', [3000, 11000]) * np.exp(-tt(len(gl)) / 0.09)
-add(sfx, fade_in(norm(gl), 2), 4.0, 0.62, pan=0.0)
+add(sfx, fade_in(norm(gl), 2), T_BOOM, 0.62, pan=0.0)
 n = S(0.8)
 t = tt(n)
 grains = noise(n) * (rng.random(n) < 0.18) * 3.0
@@ -419,14 +426,14 @@ for ch, pan in ((0, -0.5), (1, 0.5)):
     g = np.roll(grains, 37 * ch)
     y = svf_lp(g, 9500 * (0.075 ** (t / 0.8)))
     y *= (1 - t / 0.8) ** 1.6 * np.clip(t / 0.01, 0, 1)
-    add(sfx, fade_in(y, 3), 4.0, 0.42, pan=pan)
+    add(sfx, fade_in(y, 3), T_BOOM, 0.42, pan=pan)
 
-# 4.4–6.4 suction: denser and denser "whoosh" grains + a big sweep per glyph + a soft tick per settled pixel column
-tg = 4.38
+# 2.4–4.4 suction: denser and denser "whoosh" grains + a big sweep per glyph + a soft tick per settled pixel column
+tg = 2.38
 gap = 0.13
-while tg < 6.35:
+while tg < 4.35:
     dur = 0.09
-    add(sfx, whoosh(dur, 900, 3200, q=2.2, peak=0.7), tg, 0.13 + 0.1 * (tg - 4.4) / 2, pan=rng.uniform(-0.7, 0.7))
+    add(sfx, whoosh(dur, 900, 3200, q=2.2, peak=0.7), tg, 0.13 + 0.1 * (tg - 2.4) / 2, pan=rng.uniform(-0.7, 0.7))
     gap = max(0.032, gap * 0.93)
     tg += gap
 for k in range(5):
@@ -439,18 +446,18 @@ for k in range(5):
         tl = s0 + SWEEPD * np.arccos(1 - 2 * x) / np.pi
         add(sfx, click(rng.uniform(2600, 4200), 0.004, 0.4), tl, 0.16, pan=-0.6 + 0.3 * k + 0.012 * c)
 
-# 6.5 / 6.58 red extrusion pops out, layer by layer ("咔")
-for t0, g in ((6.5, 0.75), (6.58, 0.6)):
+# 4.5 / 4.58 red extrusion pops out, layer by layer ("咔")
+for t0, g in ((4.5, 0.75), (4.58, 0.6)):
     n = S(0.12)
     t = tt(n)
     x = filt(noise(n), 'band', [1400, 5200]) * np.exp(-t / 0.012) + 0.9 * sine(250 - 900 * t, n) * np.exp(-t / 0.035)
     add(sfx, fade_in(np.tanh(1.5 * x), 2), t0, g)
-# 7.0 "AI" turns warm yellow: a bright two-partial chime
+# 5.0 "AI" turns warm yellow: a bright two-partial chime
 n = S(0.5)
 t = tt(n)
 ch = sine(1318.5, n) * np.exp(-t / 0.16) + 0.5 * sine(1975.5, n) * np.exp(-t / 0.1) + 0.5 * square(659.25, n, 0.25) * np.exp(-t / 0.03)
-add(sfx, fade_in(ch, 2), 7.0, 0.7)
-# 7.5 glow powers on left → right: buzzing flicker that follows the visual flicker
+add(sfx, fade_in(ch, 2), 5.0, 0.7)
+# 5.5 glow powers on left → right: buzzing flicker that follows the visual flicker
 n = S(0.5)
 t = tt(n)
 hum = saw(100, n) * 0.6 + saw(200.5, n) * 0.4
@@ -464,9 +471,9 @@ for k in range(5):
     gate = np.maximum(gate, g)
 gate = uniform_filter1d(gate, S(0.002))
 hum *= gate * np.exp(-np.clip(t - 0.3, 0, None) / 0.12)
-add(sfx, fade_in(hum, 3), 7.5, 0.75)
-add(sfx, click(1800, 0.008, 0.8, 0.05), 7.5, 0.8)
-# 7.2–8.0 reverse-reverb "inhale" into the glitch hit
+add(sfx, fade_in(hum, 3), 5.5, 0.75)
+add(sfx, click(1800, 0.008, 0.8, 0.05), 5.5, 0.8)
+# 8.7–9.5 reverse-reverb "inhale" into the period landing / glitch hit
 n = S(1.3)
 t = tt(n)
 ir = noise(n) * np.exp(-t / 0.32)
@@ -479,12 +486,13 @@ wet = filt(wet, 'band', [300, 7000])
 rev = norm(wet[::-1])[-S(0.8):]
 rev *= np.linspace(0, 1, len(rev)) ** 1.2
 rev = fade_out(rev, 14)
-add(sfx, st(rev, 0.0), 7.972 - len(rev) / SR, 0.8)
+add(sfx, st(rev, 0.0), PERIOD_T - 0.028 - len(rev) / SR, 0.8)
 
-# 8.0 glitch: hard hit + 0.4 s of digital "滋啦", segment by segment with the picture (30 Hz), 2nd burst weaker
-add(sfx, boom(75, 34, 0.3, 0.8), 8.0, 1.0)
-add(sfx, kick(1.3), 8.0, 0.8)
-add(sfx, click(2800, 0.01, 1.2, 0.06), 8.0, 0.7)
+# 9.5 glitch: hard hit + 0.4 s of digital "滋啦", segment by segment with the picture (30 Hz), 2nd burst weaker
+# (this hit also carries the subtitle's strong beat, so the subtitle has no separate impact of its own)
+add(sfx, boom(75, 34, 0.3, 0.8), PERIOD_T, 1.0)
+add(sfx, kick(1.3), PERIOD_T, 0.8)
+add(sfx, click(2800, 0.01, 1.2, 0.06), PERIOD_T, 0.7)
 for (a, b), g in ((GLITCH1, 1.0), (GLITCH2, 0.55)):
     tseg = a
     while tseg < b - 1e-6:
@@ -504,12 +512,12 @@ for (a, b), g in ((GLITCH1, 1.0), (GLITCH2, 0.55)):
         add(sfx, x, tseg, 0.42 * g, pan=rng.uniform(-0.6, 0.6))
         tseg += d
 
-# 8.5 the red pixel flies to 娜, 8.87 it drops
-add(sfx, whoosh(0.28, 600, 3000, q=1.8, peak=0.6), 8.5, 0.32, pan=-0.3)
+# 6.0 the red pixel flies to 娜, 6.37 it drops
+add(sfx, whoosh(0.28, 600, 3000, q=1.8, peak=0.6), T_FLY, 0.32, pan=-0.3)
 n = S(0.13)
-add(sfx, fade_in(sine(1400 * 0.45 ** (tt(n) / 0.13), n) * np.linspace(0.2, 1, n) ** 2, 3), 8.87, 0.12, pan=-0.5)
+add(sfx, fade_in(sine(1400 * 0.45 ** (tt(n) / 0.13), n) * np.linspace(0.2, 1, n) ** 2, 3), T_FLY + 0.37, 0.12, pan=-0.5)
 
-# 9.0–11.5 landings: 8-bit note climbing the scale + a soft weight thump
+# 6.5–9.0 landings: 8-bit note climbing the scale + a soft weight thump
 SCALE = [69, 71, 72, 74, 76, 77]
 for j, t0 in enumerate(LAND):
     n = S(0.2)
@@ -524,7 +532,7 @@ for j, t0 in enumerate(LAND):
     add(sfx, fade_in(th, 2), t0, 0.6, pan=-0.6 + 0.24 * j)
 
 
-# 12.0 the period lands: crisp "叮" + sonic logo (motif A4–E5–A5), repeated at 13.7
+# 9.5 the period lands: crisp "叮" + sonic logo (motif A4–E5–A5), repeated at 10.2 when the subtitle has locked
 def bell(f, dur=0.6, tau=0.25, idx=2.2):
     n = S(dur)
     t = tt(n)
@@ -546,48 +554,47 @@ def logo(t0, gain):
 add(sfx, bell(1760, 0.5, 0.12, 2.0), PERIOD_T, 0.6, pan=0.4)
 add(sfx, click(2600, 0.01, 0.3, 0.05), PERIOD_T, 0.3, pan=0.4)
 logo(PERIOD_T, 0.5)
-# 12.05–12.9 glint sweep over the title
-n = S(0.85)
+# 10.1–10.72 glint sweep over the title
+GD = T_GLINTD
+n = S(GD)
 t = tt(n)
 sh = np.zeros(n)
 for fm in (2637.0, 3520.0, 4186.0):
-    sh += sine(fm * (1 + 0.12 * t / 0.85), n, rng.random()) * (0.6 + 0.4 * np.sin(2 * np.pi * 14 * t + fm))
+    sh += sine(fm * (1 + 0.12 * t / GD), n, rng.random()) * (0.6 + 0.4 * np.sin(2 * np.pi * 14 * t + fm))
 sh += 0.5 * filt(noise(n), 'band', [6000, 11000])
-sh *= np.sin(np.pi * t / 0.85) ** 2
-add(sfx, np.stack([sh * (1 - t / 0.85), sh * (t / 0.85)]), 12.05, 0.16)
-# 12.72–13.0 short riser into the downbeat
+sh *= np.sin(np.pi * t / GD) ** 2
+add(sfx, np.stack([sh * (1 - t / GD), sh * (t / GD)]), T_GLINT, 0.16)
+# 9.22–9.47 short riser into the landing downbeat
 n = S(0.28)
 t = tt(n)
 ri = sine(320 * (5 ** (t / 0.28)), n) * 0.5 + svf_bp(noise(n), 800 * (6 ** (t / 0.28)), 2.0)
 ri *= (t / 0.28) ** 1.6
 ri = fade_out(ri[:S(0.25)], 12)
-add(sfx, ri, 12.72, 0.55)
-# 13.0 strong beat: impact + the title lifts
-add(sfx, boom(70, 36, 0.22, 0.7), 13.0, 0.8)
-add(sfx, click(3000, 0.012, 1.4, 0.07), 13.0, 0.55)
-add(sfx, whoosh(0.35, 1800, 500, q=1.5, peak=0.2), 13.0, 0.2)
-# 13.0–13.55 decoding chatter + a light "嗒" for every locked character
+add(sfx, ri, PERIOD_T - 0.28, 0.55)
+# 9.5 the title lifts (the impact itself is the glitch hit above)
+add(sfx, whoosh(0.35, 1800, 500, q=1.5, peak=0.2), SUB_T0, 0.2)
+# 9.5–10.05 decoding chatter + a light "嗒" for every locked character
 for k in range(int(0.55 / 0.05)):
     for i in range(3):
         n = S(0.012)
-        add(sfx, fade_out(fade_in(square(rng.uniform(1400, 3200), n, 0.5), 2), 2), 13.0 + 0.05 * k + 0.016 * i, 0.028, pan=rng.uniform(-0.6, 0.6))
+        add(sfx, fade_out(fade_in(square(rng.uniform(1400, 3200), n, 0.5), 2), 2), SUB_T0 + 0.05 * k + 0.016 * i, 0.028, pan=rng.uniform(-0.6, 0.6))
 for i in range(SUB_N):
     add(sfx, click(2400, 0.006, 0.9, 0.04), SUB_LOCK0 + SUB_LOCKD * i, 0.5, pan=-0.6 + 1.2 * i / (SUB_N - 1))
-logo(13.7, 0.5)
+logo(T_SUBFL, 0.5)
 
-# 15.0 CRT switch-off "噗": heaviest hit — sub boom, puff, downward zap, static
-add(sfx, boom(70, 28, 0.5, 1.2), 15.0, 1.0)
+# 11.0 CRT switch-off "噗": heaviest hit — sub boom, puff, downward zap, static
+add(sfx, boom(70, 28, 0.5, 1.2), T_CRT, 1.0)
 n = S(0.4)
 t = tt(n)
 puff = filt(noise(n), 'low', 900) * np.exp(-t / 0.06)
 zap = sine(2200 * (0.03 ** np.clip(t / 0.14, 0, 1)), n) * np.exp(-t / 0.1)
 stat = filt(noise(n) * (rng.random(n) < 0.06), 'high', 2500) * np.exp(-t / 0.07)
-add(sfx, fade_in(np.tanh(1.4 * (puff + 0.45 * zap + 1.2 * stat)), 2), 15.0, 0.8)
-# 15.5 dot flashes, 15.7 short "哔" as it dies
-add(sfx, bell(2093, 0.3, 0.07, 1.0), 15.5, 0.16)
+add(sfx, fade_in(np.tanh(1.4 * (puff + 0.45 * zap + 1.2 * stat)), 2), T_CRT, 0.8)
+# 11.5 dot flashes, 11.7 short "哔" as it dies
+add(sfx, bell(2093, 0.3, 0.07, 1.0), T_CRT + 0.5, 0.16)
 n = S(0.075)
 bp = filt(square(1046.5, n, 0.5), 'low', 4500, 2)
-add(sfx, fade_out(fade_in(bp, 3), 8), 15.7, 0.3)
+add(sfx, fade_out(fade_in(bp, 3), 8), T_CRT + 0.7, 0.3)
 
 # ----------------------------------------------------------------- mix
 # sidechain: music ducks under every effect
@@ -680,7 +687,7 @@ y = limiter(mix * gain)
 
 # smooth fade to silence at the very end
 fe = np.ones(N)
-i0, i1 = S(15.74), S(15.95)
+i0, i1 = S(11.74), S(11.95)
 fe[i0:i1] = 0.5 + 0.5 * np.cos(np.linspace(0, np.pi, i1 - i0))
 fe[i1:] = 0
 y *= fe
