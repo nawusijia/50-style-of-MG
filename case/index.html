@@ -117,14 +117,14 @@ SPOTS.forEach(s => {
 
 // ------------------------------------------------------------------ timeline constants (shared with gen_audio.py)
 const SWEEP0 = 2.8, SWEEPD = 0.3;                // char k is swept during [2.8+0.3k, 2.8+0.3k+0.3]
-const LAND = [6.5, 7.0, 7.5, 8.0, 8.5, 9.0];     // red pixel landings, then the period at 9.5
-const T_PERIOD = 9.5;                            // period lands = glitch + subtitle reveal
+const LAND = [6.25, 6.5, 6.75, 7.0];             // quick hops on 娜乌斯嘉, then one big flip over AI into the period at 7.5
+const T_PERIOD = 7.5;                            // period lands = glitch + subtitle reveal
 const T_HOLD = 6.0;                              // glow peak; slow push-in / sway / scanlines from here to the CRT
-const T_FLY = 6.0;                               // red pixel flies above 娜
-const SUB_T0 = 9.5, SUB_LOCK0 = 9.58, SUB_LOCKD = 0.045;   // subtitle appears / lock times (done by ~10.1)
-const T_SUBFL = 10.22;                           // subtitle shine + second sonic logo
-const T_GLINT = 10.1, T_GLINTD = 0.62;           // glint across the title in the hold
-const T_CRT = 11.0;                              // CRT switch-off
+const T_FLY = 5.8;                               // red pixel flies above 娜
+const SUB_T0 = 7.5, SUB_LOCK0 = 7.58, SUB_LOCKD = 0.045;   // subtitle appears / lock times (done by ~10.1)
+const T_SUBFL = 8.22;                           // subtitle shine + second sonic logo
+const T_GLINT = 8.1, T_GLINTD = 0.62;           // glint across the title in the hold
+const T_CRT = 9.0;                              // CRT switch-off
 const GLOW_ON = 5.5;
 
 function sweepU(k, t) { return c01((t - (SWEEP0 + SWEEPD * k)) / SWEEPD); }
@@ -197,7 +197,7 @@ function camWorld(t) {
            roll: 0.0045 * Math.sin(2 * Math.PI * (t - T_HOLD) / 5.5) * ss(T_HOLD, T_HOLD + 1, t), bump: 0, road: 0, t };
 }
 function kickPulse(t) {
-  if (t < T_BOOM || t >= 10.75) return 0;
+  if (t < T_BOOM || t >= T_CRT - 0.25) return 0;
   const b = Math.floor(t * 2) / 2; return Math.exp(-(t - b) / 0.12);
 }
 
@@ -577,7 +577,7 @@ function buildLayer(t) {
       if (fl > 0.01) { lctx.globalAlpha = fl; lctx.drawImage(spr.hot, c0, 0, w, GN, x0, y0, w * CELL, GN * CELL); lctx.globalAlpha = 1; }
     }
   }
-  // hold (10.1–10.72 s): a glint sweeps across the finished title (cell-quantised so the pixels stay crisp)
+  // hold (8.1–8.72 s): a glint sweeps across the finished title (cell-quantised so the pixels stay crisp)
   if (t > T_GLINT && t < T_GLINT + T_GLINTD) {
     const u = eio((t - T_GLINT) / T_GLINTD);
     const gx = lerp(OX - 260, OX + TITLE_W + 300, u);
@@ -637,7 +637,7 @@ function glowLevel(k, t) {
 
 // ------------------------------------------------------------------ the red pixel (hero)
 function landingSurface(j) {
-  if (j < 6) { const s = SPOTS[j]; return [s.lx, s.ly + dipOf(s.k, s.part, LAND[j] + 0.03) * 0]; }
+  if (j < LAND.length) { const s = SPOTS[j]; return [s.lx, s.ly + dipOf(s.k, s.part, LAND[j] + 0.03) * 0]; }
   return [PERIOD_LX, PERIOD_LY];
 }
 function penState(t) {
@@ -667,9 +667,11 @@ function penState(t) {
   }
   if (t < T_FLY) { const b = rest(); return { x: b[0] + 2 * Math.sin(t * 2.1), y: b[1], w: 22 * S, h: 22 * S, glow: 1 }; }
   const s0 = SPOTS[0];
-  const hoverY = s0.ly - 150;
+  const hoverY = s0.ly - 120;
+  const NL = LAND.length;
+  const T_SQ = T_FLY + 0.26, T_DROP = T_FLY + 0.34;
   if (t < LAND[0]) {
-    if (t < T_FLY + 0.26) {     // fly to above 娜 and grow to 80 px
+    if (t < T_SQ) {     // fly to above 娜 and grow to 80 px
       const u = eio((t - T_FLY) / 0.26);
       const a = L2S(OX + TITLE_W + 30, OY - 24 + 5 * Math.sin(2 * Math.PI * (T_FLY - T_REST) / 1.3));
       a[0] += 2 * Math.sin(T_FLY * 2.1);
@@ -678,42 +680,50 @@ function penState(t) {
       return { x: lerp(a[0], b[0], u), y: lerp(a[1], b[1], u) - 40 * Math.sin(Math.PI * u), w: sz * S, h: sz * S, glow: 1 };
     }
     const b = L2S(s0.lx, hoverY);
-    if (t < T_FLY + 0.37) {     // anticipation squash
-      const u = (t - (T_FLY + 0.26)) / 0.11; const q = Math.sin(Math.PI * u) * 0.18;
+    if (t < T_DROP) {     // anticipation squash
+      const u = (t - T_SQ) / (T_DROP - T_SQ); const q = Math.sin(Math.PI * u) * 0.18;
       return { x: b[0], y: b[1] - 6 * Math.sin(Math.PI * u), w: 80 * S * (1 + q), h: 80 * S / (1 + q), glow: 1 };
     }
-    const u = (t - (T_FLY + 0.37)) / 0.13;   // drop (gravity)
+    const u = (t - T_DROP) / (LAND[0] - T_DROP);   // drop (gravity)
     const c = L2S(s0.lx, s0.ly);
     const y = lerp(b[1], c[1], u * u);
     const st = 1 + 0.3 * u;
     return { x: b[0], y, w: 80 * S / st, h: 80 * S * st, glow: 1 };
   }
-  if (t < T_PERIOD + 0.0001 || true) {
-    // jumping: landing j at LAND[j]; contact 0.1 s, then a ballistic hop to the next spot
-    if (t < T_PERIOD) {
-      let j = 0; for (let q = 0; q < LAND.length; q++) if (t >= LAND[q]) j = q;
-      const tau = t - LAND[j];
-      const sj = SPOTS[j];
-      const dipJ = dipOf(sj.k, sj.part, t);
-      if (tau < 0.1) {
-        const sq = tau < 0.03 ? eo2(tau / 0.03) : 1 - eio((tau - 0.03) / 0.07) * 0.75;
-        const sx = 1 + 0.5 * sq, sy = 1 - 0.4 * sq;
-        const c = L2S(sj.lx, sj.ly + dipJ);
-        return { x: c[0], y: c[1], w: 80 * S * sx, h: 80 * S * sy, glow: 1 };
-      }
-      const u = (tau - 0.1) / 0.4;
-      const a = [sj.lx, sj.ly];
-      const b = j < 5 ? [SPOTS[j + 1].lx, SPOTS[j + 1].ly] : [PERIOD_LX, PERIOD_LY];
-      const Hh = j < 5 ? 150 : 175;
-      const lx = lerp(a[0], b[0], u);
-      const ly = lerp(a[1], b[1], u) - Hh * 4 * u * (1 - u);
-      const vy = (b[1] - a[1]) - Hh * 4 * (1 - 2 * u);
-      const vmax = Hh * 4 + Math.abs(b[1] - a[1]);
-      const st = 1 + 0.3 * Math.min(1, Math.abs(vy) / vmax * 1.15);
-      const c = L2S(lx, ly);
-      const sz = j < 5 ? 80 : lerp(80, 64, u);
-      return { x: c[0], y: c[1], w: sz * S / st, h: sz * S * st, glow: 1 };
+  if (t < T_PERIOD) {
+    // four quick low hops (娜 乌 斯 嘉), then one high flipping leap over "AI" into the period
+    let j = 0; for (let q = 0; q < NL; q++) if (t >= LAND[q]) j = q;
+    const last = j === NL - 1;
+    const tau = t - LAND[j];
+    const tNext = last ? T_PERIOD : LAND[j + 1];
+    const C = last ? 0.08 : 0.05;                  // ground contact
+    const sj = SPOTS[j];
+    const dipJ = dipOf(sj.k, sj.part, t);
+    if (tau < C) {
+      const r0 = 0.02;
+      const sq = tau < r0 ? eo2(tau / r0) : 1 - eio((tau - r0) / (C - r0)) * 0.75;
+      const k = last ? 1.25 : 1;                   // deeper crouch before the big leap
+      const sx = 1 + 0.5 * sq * k, sy = 1 - 0.4 * sq * k;
+      const c = L2S(sj.lx, sj.ly + dipJ);
+      return { x: c[0], y: c[1], w: 80 * S * sx, h: 80 * S * sy, glow: 1 };
     }
+    const u = (tau - C) / (tNext - LAND[j] - C);
+    const a = [sj.lx, sj.ly];
+    const b = last ? [PERIOD_LX, PERIOD_LY] : [SPOTS[j + 1].lx, SPOTS[j + 1].ly];
+    const Hh = last ? 240 : 70;
+    const lx = lerp(a[0], b[0], u);
+    const ly = lerp(a[1], b[1], u) - Hh * 4 * u * (1 - u);
+    const vy = (b[1] - a[1]) - Hh * 4 * (1 - 2 * u);
+    const vmax = Hh * 4 + Math.abs(b[1] - a[1]);
+    const st = 1 + 0.3 * Math.min(1, Math.abs(vy) / vmax * 1.15);
+    const c = L2S(lx, ly);
+    const sz = last ? lerp(80, 64, u) : 80;
+    let w = sz * S / st, hh = sz * S * st, flip = 0;
+    if (last) {   // a full coin-flip in the air: the block turns edge-on twice and shows its back once
+      const cs = Math.cos(2 * Math.PI * eio(c01((u - 0.08) / 0.84)));
+      w *= Math.max(0.1, Math.abs(cs)); flip = cs < 0 ? 1 : 0;
+    }
+    return { x: c[0], y: c[1], w, h: hh, glow: 1, flip };
   }
   // period
   const c = L2S(PERIOD_LX, PERIOD_LY + dipOf(4, 1, t) * 0);
@@ -725,7 +735,7 @@ function penState(t) {
     return { x: c[0], y: c[1], w: base * S * (1 + 0.5 * sq), h: base * S * (1 - 0.4 * sq), glow: 1 + 1.2 * Math.exp(-tau / 0.08) };
   }
   let glow = 1;
-  if (t > T_GLINT && t < 10.75) glow = 1 + 0.55 * Math.sin(Math.PI * (t - T_GLINT) / 0.325) ** 2;
+  if (t > T_GLINT && t < T_CRT - 0.25) glow = 1 + 0.55 * Math.sin(Math.PI * (t - T_GLINT) / 0.325) ** 2;
   if (t > T_SUBFL - 0.04 && t < T_SUBFL + 0.28) glow += 0.6 * Math.exp(-Math.pow((t - T_SUBFL) / 0.07, 2));
   return { x: c[0], y: c[1], w: 22 * S, h: 22 * S, glow };
 }
@@ -744,8 +754,9 @@ function drawPen(c, ps, alpha) {
   c.fillStyle = rgba(RED); c.fillRect(x, y, w, h);
   if (w >= 30) {     // pixel bevel: light top/left, dark bottom/right
     const b = Math.max(3, Math.round(Math.min(w, h) / 8));
-    c.fillStyle = rgba([255, 128, 138]); c.fillRect(x, y, w - b, b); c.fillRect(x, y, b, h - b);
-    c.fillStyle = rgba([196, 44, 62]); c.fillRect(x + b, y + h - b, w - b, b); c.fillRect(x + w - b, y + b, b, h - b);
+    const lit = ps.flip ? [196, 44, 62] : [255, 128, 138], shd = ps.flip ? [255, 128, 138] : [196, 44, 62];
+    c.fillStyle = rgba(lit); c.fillRect(x, y, w - b, b); c.fillRect(x, y, b, h - b);
+    c.fillStyle = rgba(shd); c.fillRect(x + b, y + h - b, w - b, b); c.fillRect(x + w - b, y + b, b, h - b);
   } else {
     const b = Math.max(2, Math.round(w / 6));
     c.fillStyle = rgba([255, 132, 142]); c.fillRect(x, y, b, b);
@@ -765,7 +776,7 @@ const DEBRIS = [];
 function drawDebris(t) {
   for (const d of DEBRIS) {
     const tau = t - d.T; if (tau < 0 || tau > d.life) continue;
-    const base = d.j < 6 ? [SPOTS[d.j].lx, SPOTS[d.j].ly] : [PERIOD_LX, PERIOD_LY];
+    const base = d.j < LAND.length ? [SPOTS[d.j].lx, SPOTS[d.j].ly] : [PERIOD_LX, PERIOD_LY];
     const lx = base[0] + d.vx * tau, ly = base[1] - 4 + d.vy * tau + 0.5 * 1900 * tau * tau;
     const p = L2S(lx, ly);
     const s = Math.max(2, Math.round(d.s * VIEW.S * (1 - Math.pow(tau / d.life, 2))));
@@ -1128,7 +1139,7 @@ function postCRT(t) {
   }
 }
 function drawFinalDot(t) {
-  // the red period survives the CRT switch-off, slides to the centre, flashes and dies at 11.7 s
+  // the red period survives the CRT switch-off, slides to the centre, flashes and dies at 9.7 s
   const v = setViewReturn(T_CRT);
   const p0 = v.pos, s0 = v.size;
   const u = eio((t - (T_CRT + 0.1)) / 0.4);
@@ -1161,7 +1172,7 @@ function setViewReturn(t) {
 })();
 
 function draw(t) {
-  t = clamp(+t || 0, 0, 12);
+  t = clamp(+t || 0, 0, 10);
   drawScene(t);
   post(t);
 }
@@ -1187,7 +1198,7 @@ overlay.querySelector('button').addEventListener('click', () => {
   if (p && p.catch) p.catch(() => { playing = false; overlay.classList.remove('hidden'); });
   requestAnimationFrame(loop);
 });
-audio.addEventListener('ended', () => { playing = false; draw(12); overlay.classList.remove('hidden'); });
+audio.addEventListener('ended', () => { playing = false; draw(10); overlay.classList.remove('hidden'); });
 })();
 </script>
 </body>
