@@ -116,23 +116,24 @@ SPOTS.forEach(s => {
 });
 
 // ------------------------------------------------------------------ timeline constants (shared with gen_audio.py)
-const SWEEP0 = 2.8, SWEEPD = 0.3;                // char k is swept during [2.8+0.3k, 2.8+0.3k+0.3]
-const LAND = [6.25, 6.5, 6.75, 7.0];             // quick hops on 娜乌斯嘉, then one big flip over AI into the period at 7.5
-const T_PERIOD = 7.5;                            // period lands = glitch + subtitle reveal
-const T_HOLD = 6.0;                              // glow peak; slow push-in / sway / scanlines from here to the CRT
-const T_FLY = 5.8;                               // red pixel flies above 娜
-const SUB_T0 = 7.5, SUB_LOCK0 = 7.58, SUB_LOCKD = 0.045;   // subtitle appears / lock times (done by ~10.1)
-const T_SUBFL = 8.22;                           // subtitle shine + second sonic logo
-const T_GLINT = 8.1, T_GLINTD = 0.62;           // glint across the title in the hold
-const T_CRT = 9.0;                              // CRT switch-off
-const GLOW_ON = 5.5;
+const SWEEP0 = 2.8, SWEEPD = 0.1;                // one fast swoosh over the whole title: 2.8 → 3.3
+const LAND = [3.75, 4.0, 4.25, 4.5];             // quick hops on 娜乌斯嘉, then one big flip over AI into the period at 7.5
+const T_PERIOD = 5.0;                            // period lands = glitch + subtitle reveal
+const T_HOLD = 3.5;                              // glow peak; slow push-in / sway / scanlines from here to the CRT
+const T_FLY = 3.35;                               // red pixel flies above 娜
+const SUB_T0 = 5.0, SUB_LOCK0 = 5.08, SUB_LOCKD = 0.045;   // subtitle appears / lock times (done by ~10.1)
+const T_SUBFL = 5.72;                           // subtitle shine + second sonic logo
+const T_GLINT = 5.6, T_GLINTD = 0.62;           // glint across the title in the hold
+const T_CRT = 6.5;                              // CRT switch-off
+const GLOW_ON = 3.25;
 
-function sweepU(k, t) { return c01((t - (SWEEP0 + SWEEPD * k)) / SWEEPD); }
+function sweepG(t) { return 5 * esine((t - SWEEP0) / (5 * SWEEPD)); }          // 0 → 5 glyphs, one eased swoosh
+function sweepU(k, t) { return c01(sweepG(t) - k); }
 function revealedCols(k, t) {
   if (t >= SWEEP0 + SWEEPD * (k + 1)) return GN;
-  const u = sweepU(k, t); return Math.floor(GN * esine(u) + 1e-6);
+  const u = sweepU(k, t); return Math.floor(GN * u + 1e-6);
 }
-function bandLX(k, t) { return OX + (GX[k] + GN * esine(sweepU(k, t))) * CELL; }
+function bandLX(k, t) { return OX + (GX[k] + GN * sweepU(k, t)) * CELL; }
 
 // ------------------------------------------------------------------ opening: camera / road
 const T_STR = 1.4;                               // road straightens, car speeds into the sun
@@ -413,7 +414,7 @@ function drawCar(cam, t) {
 const VIEW = { S: 1, cx: 960, cy: 430, yaw: 0, dyWorld: 0 };
 function setView(t) {
   let S = 1;
-  for (const tn of [4.5, 5.0, 5.5]) S += 0.008 * eo((t - tn) / 0.28);
+  S += 0.016 * eo((t - 3.3) / 0.28);
   S += 0.03 * esine((t - T_HOLD) / (T_CRT - T_HOLD));
   S += 0.006 * eo((t - SUB_T0) / 0.4);
   VIEW.S = S;
@@ -476,7 +477,7 @@ function particlePos(p, t) {
 }
 // assignment of every particle to a glyph cell (left particles feed the left glyphs)
 const CELLS = GLYPHS.map((g, k) => { const L = []; for (let r = 0; r < GN; r++) for (let c = 0; c < GN; c++) if (cellOn(k, r, c)) L.push([r, c]); return L; });
-function colLockTime(k, c) { const x = (c + 1) / GN; return SWEEP0 + SWEEPD * k + SWEEPD * Math.acos(1 - 2 * x) / Math.PI; }
+function colLockTime(k, c) { const x = (c + 1) / GN; return SWEEP0 + 5 * SWEEPD * Math.acos(1 - 2 * (k + x) / 5) / Math.PI; }
 (function assign() {
   VIEW.cy = 430;
   const idx = P.map((p, i) => [nebPos(p, 3.4)[0] + (hash2(i, 7) - 0.5) * 900, i]).sort((a, b) => a[0] - b[0]);
@@ -541,9 +542,9 @@ function buildLayer(t) {
   lctx.globalCompositeOperation = 'source-over'; lctx.globalAlpha = 1;
   lctx.clearRect(0, 0, LW, LH);
   lctx.imageSmoothingEnabled = false;
-  const p1 = popOff(t, 4.5), p2 = popOff(t, 4.58);
+  const p1 = popOff(t, 3.3), p2 = popOff(t, 3.36);
   const o1 = Math.round(CELL * p1), o2 = Math.round(CELL * (1 + p2));
-  const aiWipe = c01((t - 5.0) / 0.075);                  // AI turns warm yellow, top→bottom wipe
+  const aiWipe = 1;                                         // AI is gold from the moment it appears
   for (let k = 0; k < 5; k++) {
     const rc = revealedCols(k, t); if (rc <= 0) continue;
     const spr = SPR[k];
@@ -573,11 +574,10 @@ function buildLayer(t) {
       }
       // flash when the red pixel lands on it
       let fl = hitFlash(k, pi, t);
-      if (k === 4 && aiWipe > 0 && aiWipe < 1.5) fl = Math.max(fl, 0.55 * Math.exp(-(t - 5.0) / 0.1));
       if (fl > 0.01) { lctx.globalAlpha = fl; lctx.drawImage(spr.hot, c0, 0, w, GN, x0, y0, w * CELL, GN * CELL); lctx.globalAlpha = 1; }
     }
   }
-  // hold (8.1–8.72 s): a glint sweeps across the finished title (cell-quantised so the pixels stay crisp)
+  // hold (6.1–6.72 s): a glint sweeps across the finished title (cell-quantised so the pixels stay crisp)
   if (t > T_GLINT && t < T_GLINT + T_GLINTD) {
     const u = eio((t - T_GLINT) / T_GLINTD);
     const gx = lerp(OX - 260, OX + TITLE_W + 300, u);
@@ -653,15 +653,15 @@ function penState(t) {
     return { x: lerp(a[0], b[0], u), y: lerp(a[1], b[1], u) + lift + 3 * Math.sin(t * 9), w: 22 * S, h: 22 * S, glow: 1 };
   }
   if (t < SWEEP0 + 5 * SWEEPD) {
-    const k = Math.min(4, Math.floor((t - SWEEP0) / SWEEPD));
+    const k = Math.min(4, Math.floor(sweepG(t)));
     const lx = bandLX(k, t);
     const p = L2S(lx, top + 3 * Math.sin(t * 9));
     return { x: p[0], y: p[1], w: 22 * S, h: 22 * S, glow: 1 };
   }
-  const T_SW1 = SWEEP0 + 5 * SWEEPD, T_REST = T_SW1 + 0.3;
+  const T_SW1 = SWEEP0 + 5 * SWEEPD, T_REST = Math.min(T_SW1 + 0.3, T_FLY);
   const rest = () => L2S(OX + TITLE_W + 30, OY - 24 + 5 * Math.sin(2 * Math.PI * (t - T_REST) / 1.3));
   if (t < T_REST) {
-    const u = eio((t - T_SW1) / 0.3);
+    const u = eio((t - T_SW1) / Math.max(0.01, T_REST - T_SW1));
     const a = L2S(bandLX(4, T_SW1), top), b = rest();
     return { x: lerp(a[0], b[0], u), y: lerp(a[1], b[1], u) - 30 * Math.sin(Math.PI * u), w: 22 * S, h: 22 * S, glow: 1 };
   }
@@ -669,10 +669,10 @@ function penState(t) {
   const s0 = SPOTS[0];
   const hoverY = s0.ly - 120;
   const NL = LAND.length;
-  const T_SQ = T_FLY + 0.26, T_DROP = T_FLY + 0.34;
+  const T_SQ = T_FLY + 0.2, T_DROP = T_FLY + 0.27;
   if (t < LAND[0]) {
     if (t < T_SQ) {     // fly to above 娜 and grow to 80 px
-      const u = eio((t - T_FLY) / 0.26);
+      const u = eio((t - T_FLY) / (T_SQ - T_FLY));
       const a = L2S(OX + TITLE_W + 30, OY - 24 + 5 * Math.sin(2 * Math.PI * (T_FLY - T_REST) / 1.3));
       a[0] += 2 * Math.sin(T_FLY * 2.1);
       const b = L2S(s0.lx, hoverY);
@@ -974,7 +974,7 @@ function drawParticles(t, flying) {
 
 function drawBand(t) {
   if (t < SWEEP0 - 0.05 || t > SWEEP0 + 5 * SWEEPD + 0.12) return;
-  const k = Math.min(4, Math.max(0, Math.floor((t - SWEEP0) / SWEEPD)));
+  const k = Math.min(4, Math.max(0, Math.floor(sweepG(t))));
   const endFade = t > SWEEP0 + 5 * SWEEPD ? c01(1 - (t - SWEEP0 - 5 * SWEEPD) / 0.12) : 1;
   const startFade = c01((t - SWEEP0 + 0.05) / 0.08);
   const a = endFade * startFade;
@@ -1139,7 +1139,7 @@ function postCRT(t) {
   }
 }
 function drawFinalDot(t) {
-  // the red period survives the CRT switch-off, slides to the centre, flashes and dies at 9.7 s
+  // the red period survives the CRT switch-off, slides to the centre, flashes and dies at 7.7 s
   const v = setViewReturn(T_CRT);
   const p0 = v.pos, s0 = v.size;
   const u = eio((t - (T_CRT + 0.1)) / 0.4);
@@ -1172,7 +1172,7 @@ function setViewReturn(t) {
 })();
 
 function draw(t) {
-  t = clamp(+t || 0, 0, 10);
+  t = clamp(+t || 0, 0, 7.5);
   drawScene(t);
   post(t);
 }
@@ -1198,7 +1198,7 @@ overlay.querySelector('button').addEventListener('click', () => {
   if (p && p.catch) p.catch(() => { playing = false; overlay.classList.remove('hidden'); });
   requestAnimationFrame(loop);
 });
-audio.addEventListener('ended', () => { playing = false; draw(10); overlay.classList.remove('hidden'); });
+audio.addEventListener('ended', () => { playing = false; draw(7.5); overlay.classList.remove('hidden'); });
 })();
 </script>
 </body>

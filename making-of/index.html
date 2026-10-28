@@ -1,0 +1,688 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>片头制作过程</title>
+<style>
+  html, body { margin: 0; background: #07080b; }
+  #stage { display: block; width: 100vw; max-width: 1920px; height: auto; margin: 0 auto; }
+  #fx { position: absolute; left: -5000px; top: 0; width: 1920px; height: 1080px; border: 0; }
+</style>
+</head>
+<body>
+<canvas id="stage" width="1920" height="1080"></canvas>
+<iframe id="fx" src="layers.html"></iframe>
+<script>
+(function () {
+'use strict';
+const W = 1920, H = 1080, DUR = 9.0;
+const cv = document.getElementById('stage');
+const ctx = cv.getContext('2d');
+const fxFrame = document.getElementById('fx');
+
+// ---------------------------------------------------------------- palette
+const BG = '#090a0e', PANEL = '#111319', PANEL2 = '#15181f', LINE = '#232731', LINE2 = '#2d323e';
+const RED = '#FF4757', YEL = '#F5C451', BEI = '#ECE8E1', DIM = '#6f7584', DIM2 = '#454a57';
+const CJK = '"Noto Sans CJK SC","PingFang SC","Microsoft YaHei",sans-serif';
+const MONO = '"DejaVu Sans Mono","Menlo","Consolas",monospace';
+
+// ---------------------------------------------------------------- math
+const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
+const c01 = x => clamp(x, 0, 1);
+const lerp = (a, b, u) => a + (b - a) * u;
+const eio = u => { u = c01(u); return u < 0.5 ? 4 * u * u * u : 1 - Math.pow(-2 * u + 2, 3) / 2; };
+const eo = u => 1 - Math.pow(1 - c01(u), 3);
+const ei = u => Math.pow(c01(u), 2);
+const eoBack = (u, s = 1.7) => { u = c01(u) - 1; return 1 + (s + 1) * u * u * u + s * u * u; };
+const ss = (a, b, x) => { const u = c01((x - a) / (b - a)); return u * u * (3 - 2 * u); };
+function hash(i) { let h = Math.imul(i | 0, 2654435761) ^ 0x5bd1e995; h = Math.imul(h ^ (h >>> 15), 2246822519); h ^= h >>> 13; return (h >>> 0) / 4294967296; }
+function rgba(hex, a) { const n = parseInt(hex.slice(1), 16); return `rgba(${n >> 16},${(n >> 8) & 255},${n & 255},${a})`; }
+
+// ---------------------------------------------------------------- layout
+const CODE = { x: 24, y: 76, w: 788, h: 586 };
+const PV = { x: 836, y: 70, w: 1060, h: 596 };            // 16:9 preview monitor
+const BAND_Y = 800;                                          // the timeline's top edge = 克肆's floor
+const TL = { x: 24, y: 800, w: 1872, h: 256, lab: 148 };
+const RULER_H = 26, ROW_H = 23;
+const CX0 = TL.x + TL.lab, CX1 = TL.x + TL.w;               // clip area
+const PV_C = [PV.x + PV.w / 2, PV.y + PV.h / 2], PV_S = W / PV.w;
+
+// ---------------------------------------------------------------- tracks (the real layers of the ident, in the order they are added)
+const TR = [
+  { k: 'terrain', name: '地形', label: '#06 线框地形飞越', col: RED, t0: 0, t1: 7.5, D: 0.55, fn: 'function drawTerrain', st: '线框地形' },
+  { k: 'sun', name: '太阳', label: '像素太阳', col: YEL, t0: 0, t1: 2.0, D: 1.0, fn: 'function drawSun', st: '像素太阳' },
+  { k: 'car', name: '小车', label: '追车小车', col: RED, t0: 0, t1: 2.0, D: 1.45, fn: 'function drawCar', st: '追车小车' },
+  { k: 'particles', name: '粒子', label: '#02 粒子聚散成形', col: BEI, t0: 2.0, t1: 3.4, D: 1.95, fn: 'function drawParticles', st: '粒子聚散' },
+  { k: 'title', name: '标题', label: '娜乌斯嘉AI', col: BEI, t0: 2.8, t1: 6.5, D: 2.45, fn: 'function buildLayer', st: '像素标题', keys: [2.8, 2.9, 3.0, 3.1, 3.2] },
+  { k: 'glow', name: '发光', label: '辉光', col: YEL, t0: 3.25, t1: 6.5, D: 2.95, fn: 'function glowLevel', st: '辉光', keys: [3.3] },
+  { k: 'pen', name: '小球', label: '#10 挤压拉伸 + #43 形变转场', col: RED, t0: 3.35, t1: 6.5, D: 3.45, fn: 'function penState', st: '跳跳小球', keys: [3.75, 4.0, 4.25, 4.5, 5.0] },
+  { k: 'glitch', name: '故障', label: '#38 故障', col: RED, t0: 5.0, t1: 5.4, D: 4.45, fn: 'function glitchI', st: '故障艺术' },
+  { k: 'sub', name: '副标题', label: '#25 乱码解码', col: BEI, t0: 5.0, t1: 6.5, D: 4.88, fn: 'function drawSubtitle', st: '乱码解码' },
+  { k: 'music', name: '音乐', label: 'music.wav', col: DIM, t0: 0, t1: 7.5, D: 5.12, fn: 'def kick', st: '配乐', py: true },
+];
+TR.forEach((tr, i) => { tr.row = i; tr.y = TL.y + RULER_H + i * ROW_H; });
+const T_VER0 = 5.3, T_VERD = 0.09, NVER = 10;               // v1 … v9 flip
+const T_KICK = 6.2, T_DASH0 = 6.28, T_PUSH0 = 6.62, T_PUSH1 = 7.62, T_REND0 = 7.62, T_REND1 = 8.02, T_ZOOM0 = 8.1;
+
+// ---------------------------------------------------------------- timeline view (seconds of the ident visible)
+function view(m) {
+  const z = eio((m - 3.62) / 0.4) * (1 - eio((m - T_KICK) / 0.3));
+  return [lerp(0, 3.0, z), lerp(7.5, 6.5, z), z];
+}
+function tx(t, v) { return CX0 + (t - v[0]) / (v[1] - v[0]) * (CX1 - CX0); }
+
+// ---------------------------------------------------------------- what the preview shows: ident time and layers
+function previewT(m) {
+  const seg = [
+    [0.55, 1.0, 0.3, 0.75], [1.0, 1.45, 0.75, 1.2], [1.45, 1.95, 1.2, 1.9], [1.95, 2.45, 2.0, 2.6],
+    [2.45, 2.95, 2.75, 3.3], [2.95, 3.45, 3.25, 3.7], [3.45, 4.45, 3.35, 4.95], [4.45, 5.05, 4.95, 5.75],
+    [5.05, 5.3, 5.75, 5.95],
+  ];
+  if (m < 0.55) return m / 0.55 * 0.3;
+  for (const s of seg) if (m < s[1]) return lerp(s[2], s[3], (m - s[0]) / (s[1] - s[0]));
+  if (m < T_KICK) return 4.2;
+  if (m < T_PUSH0) return 0;
+  if (m < T_PUSH1) return 6.4 * eio((m - T_PUSH0) / (T_PUSH1 - T_PUSH0));
+  return 0;
+}
+function layersAt(m) {
+  const o = {};
+  for (const tr of TR) o[tr.k] = m >= tr.D;
+  o.terrain = true; o.stars = true; o.fx = m >= TR[5].D; o.crt = true;
+  if (m >= T_PUSH0) for (const k in o) o[k] = true;
+  return o;
+}
+
+// ---------------------------------------------------------------- code text (the real source of the ident)
+let SRC = [], PY = [], WAVE = null;
+const VERS = [];
+function focusLine(lines, fn) { const i = lines.findIndex(l => l.startsWith(fn)); return i < 0 ? 0 : i; }
+// caret: which line is being typed. Jumps to the function of each new layer, then keeps typing.
+function caretAt(m) {
+  // returns {file, line (float), focus}
+  if (m >= T_PUSH0 && m < T_PUSH1) { const u = eio((m - T_PUSH0) / (T_PUSH1 - T_PUSH0)); return { file: 0, line: 19 + u * (SRC.length - 30), focus: -1, done: true }; }
+  if (m >= T_PUSH1) return { file: 0, line: SRC.length - 11, focus: -1, done: true };
+  let cur = { file: 0, base: 22, t0: 0.05, focus: -1 };
+  for (const tr of TR) {
+    const tj = tr.D - 0.42;
+    if (m >= tj) cur = { file: tr.py ? 1 : 0, base: focusLine(tr.py ? PY : SRC, tr.fn), t0: tj, focus: tr.row };
+  }
+  let line = cur.base + (Math.min(m, T_VER0) - cur.t0) * 16;
+  return { file: cur.file, line, focus: cur.focus };
+}
+
+// tokenizer for a light syntax colouring
+const TOK = /(\/\/.*$|#.*$)|('(?:[^'\\]|\\.)*'?|"(?:[^"\\]|\\.)*"?)|\b(const|let|var|function|return|if|else|for|while|new|true|false|null|def|import|from|in|and|or|not|elif|np)\b|(\b\d+(?:\.\d+)?\b)|([A-Za-z_$][\w$]*)|(\s+)|([^\sA-Za-z_$\d'"]+)/g;
+function drawCodeLine(s, x, y, maxW, py, nChars) {
+  if (nChars !== undefined) s = s.slice(0, Math.max(0, Math.floor(nChars)));
+  let cx = x; TOK.lastIndex = 0; let m, prevFn = false;
+  while ((m = TOK.exec(s)) && cx < x + maxW) {
+    const tk = m[0]; let col = '#a7adba';
+    if (m[1]) { if (py ? tk[0] === '#' : tk.startsWith('//')) col = '#545a68'; else col = '#a7adba'; }
+    else if (m[2]) col = '#d9c7a1';
+    else if (m[3]) col = RED;
+    else if (m[4]) col = YEL;
+    else if (m[5]) col = prevFn ? BEI : '#b9bfcc';
+    if (m[3]) prevFn = (tk === 'function' || tk === 'def'); else if (!m[6]) prevFn = false;
+    ctx.fillStyle = col; ctx.fillText(tk, cx, y);
+    cx += ctx.measureText(tk).width;
+  }
+  return cx;
+}
+
+// ---------------------------------------------------------------- the pixel 克肆 (brown hair, gold-rim glasses)
+const KC = 7;
+const PAL = { H: '#5b3b29', h: '#3e271a', S: '#f1c7a1', s: '#d6a07b', G: YEL, E: '#1c1a1d', M: '#a8544c', W: BEI, T: RED, B: '#2b3244', b: '#1e2331', P: '#242a3a', K: '#0f1116' };
+const HEAD = [
+  '..HHHHHH..',
+  '.HHHHHHHH.',
+  'HHHHHHHHHH',
+  'HHHHHHHHHh',
+  'HSSSHHHHHh',
+  'HSSSSSSSHh',
+  'SGGGSGGGSs',
+  'SGEGGGEGSs',
+  'SSSSSSSSSs',
+  'SSSSSSMSSs',
+  '.SSSSSSSs.',
+];
+const TORSO = ['..BWTTWB..', '..BBTTBB..', '..BBTTBb..', '..BBBBBb..'];
+const LEGS = {
+  stand: ['..PPPPPP..', '..PP..PP..', '..PP..PP..', '..KKK.KKK.'],
+  walkA: ['..PPPPPP..', '.PP....PP.', 'PP......PP', 'KK......KKK'],
+  walkB: ['..PPPPPP..', '...PPPP...', '...PPPP...', '..KKKKKKK.'],
+  kick: ['..PPPPPPPP', '..PP...PPK', '..PP......', '..KKK.....'],
+  jump: ['..PPPPPP..', '.PP....PP.', '.K......K.', '..........'],
+};
+const ARMS = {
+  down: [[[1, 11], [1, 12], [1, 13]], [1, 14], [[8, 11], [8, 12], [8, 13]], [8, 14]],
+  carry: [[[1, 11], [0, 10], [-1, 9], [-1, 8], [-1, 7], [-1, 6], [-1, 5], [-1, 4], [-1, 3], [-1, 2]], [-1, 1], [[8, 11], [9, 10], [10, 9], [10, 8], [10, 7], [10, 6], [10, 5], [10, 4], [10, 3], [10, 2]], [10, 1]],
+  throw: [[[1, 11], [1, 12], [0, 13]], [0, 14], [[8, 11], [9, 10], [10, 9], [11, 8]], [12, 7]],
+  push: [[[2, 13], [9, 13], [10, 13], [11, 13]], [12, 13], [[8, 12], [9, 12], [10, 12], [11, 12]], [12, 12]],
+  wipe: [[[1, 11], [1, 12], [1, 13]], [1, 14], [[8, 11], [9, 10], [9, 9], [9, 8], [9, 7]], [8, 5]],
+  glasses: [[[1, 11], [1, 12], [1, 13]], [1, 14], [[8, 11], [9, 10], [9, 9], [8, 8]], [7, 7]],
+  think: [[[1, 11], [1, 12], [1, 13]], [1, 14], [[8, 12], [9, 11], [9, 10]], [8, 9]],
+  cheer: [[[1, 11], [0, 10], [-1, 9], [-2, 8]], [-3, 7], [[8, 11], [9, 10], [10, 9], [11, 8]], [12, 7]],
+  kick: [[[1, 11], [0, 10], [-1, 9]], [-2, 8], [[8, 11], [9, 12], [10, 13]], [11, 14]],
+};
+function drawKesi(x, yFeet, st, m) {
+  const c = KC;                                  // one pixel cell
+  const face = st.face;                          // 1 right, -1 left
+  const legs = LEGS[st.legs || 'stand'];
+  const arms = ARMS[st.arms || 'down'];
+  const bob = st.bob || 0, lean = st.lean || 0, lift = st.lift || 0;
+  const ox = x - 5 * c, oy = yFeet - 19 * c - lift;
+  const P = (col, row, key, dx = 0) => {
+    const cc = face > 0 ? col + dx : 9 - col - dx;
+    ctx.fillStyle = PAL[key] || key; ctx.fillRect(Math.round(ox + cc * c), Math.round(oy + row * c), c, c);
+  };
+  // shadow on the timeline edge
+  ctx.fillStyle = 'rgba(0,0,0,0.45)';
+  const sw = 44 - Math.min(20, lift * 0.3);
+  ctx.beginPath(); ctx.ellipse(x, yFeet + 1, sw, 4, 0, 0, Math.PI * 2); ctx.fill();
+  // legs
+  legs.forEach((r, i) => { for (let j = 0; j < r.length; j++) if (r[j] !== '.') P(j, 15 + i, r[j]); });
+  // back arm (behind torso)
+  const drawArm = (seg, hand, front) => {
+    for (const [a, b] of seg) P(a, b + bob, front ? 'B' : 'b', lean);
+    P(hand[0], hand[1] + bob, 'S', lean);
+  };
+  drawArm(arms[0], arms[1], false);
+  // torso + head
+  TORSO.forEach((r, i) => { for (let j = 0; j < r.length; j++) if (r[j] !== '.') P(j, 11 + i + bob, r[j], lean); });
+  const blink = st.blink;
+  HEAD.forEach((r, i) => {
+    for (let j = 0; j < r.length; j++) {
+      let k = r[j]; if (k === '.') continue;
+      if (k === 'E' && blink) k = 'G';
+      if (k === 'M' && st.smile) k = 'M';
+      P(j, i + bob, k, lean);
+    }
+  });
+  if (st.smile) { P(5, 9 + bob, 'M', lean); P(7, 9 + bob, 'M', lean); }
+  if (st.glint) { P(3, 6 + bob, '#ffffff', lean); P(7, 6 + bob, '#ffffff', lean); }
+  drawArm(arms[2], arms[3], true);
+  if (st.sweat) { const k = st.sweat; P(11, 2 + Math.floor(k * 3), '#bfe3ff'); P(11, 3 + Math.floor(k * 3), '#bfe3ff'); }
+  if (st.lines) {   // speed lines behind a dash
+    ctx.fillStyle = rgba(BEI, 0.55);
+    for (let i = 0; i < 3; i++) { const yy = oy + (5 + i * 4) * c, len = 40 + 30 * hash(i + Math.floor(m * 30)); ctx.fillRect(face > 0 ? ox - len - 6 : ox + 10 * c + 6, yy, len, 3); }
+  }
+}
+
+// 克肆's choreography: position and pose for every moment.
+// Each clip: picked up at D-PICK, dragged along the timeline edge, let go at D-REL, lands in its track at D.
+const PICK = 0.36, REL = 0.14, HAND = 60, SLIDE0 = 1560, SLIDE1 = 1832;
+const LAND_X = [240, 300, 360, 760, 900, 1060, 1250, 1260, 1230, 960];   // where each clip lands (inside its own span)
+function dropX(tr) { return LAND_X[tr.row]; }
+const PLAN = [];   // per dragged clip: {D, x0 (drag start), x1 (release), face}
+(function () {
+  let prev = -60;
+  for (let i = 0; i < 9; i++) {
+    const tr = TR[i], face = i >= 7 ? -1 : 1;
+    const x1 = dropX(tr) - face * HAND;
+    let x0 = i >= 7 ? (i === 7 ? SLIDE1 - 52 : x1 + 30) : Math.max(prev, x1 - 50);
+    if (i === 0) x0 = x1 - 60;
+    PLAN.push({ tr, D: tr.D, x0, x1, face }); prev = x1;
+  }
+})();
+function kesiState(m) {
+  const walkFrame = (mm) => (Math.floor(mm / 0.09) % 2 ? 'walkA' : 'walkB');
+  const blink = (m % 1.7) > 1.62;
+  const walk = (x, face, mm, extra) => Object.assign({ x, face, legs: walkFrame(mm), bob: Math.floor(mm / 0.09) % 2 ? -1 : 0, blink }, extra || {});
+  // entrance
+  if (m < PLAN[0].D - PICK) { const u = eio(m / (PLAN[0].D - PICK)); return walk(lerp(-70, PLAN[0].x0, u), 1, m); }
+  for (let i = 0; i < PLAN.length; i++) {
+    const p = PLAN[i], prevEnd = i ? PLAN[i - 1].D : 0;
+    if (i === 7 && m < p.D - PICK) break;           // the slider bit sits between clip 7 and 8
+    if (m < p.D - PICK) {
+      const from = PLAN[i - 1].x1, u = eio((m - prevEnd) / Math.max(0.01, p.D - PICK - prevEnd));
+      return Math.abs(p.x0 - from) < 2 ? { x: from, face: p.face, legs: 'stand', blink } : walk(lerp(from, p.x0, u), p.x0 >= from ? 1 : -1, m);
+    }
+    if (m < p.D - REL) { const u = eio((m - (p.D - PICK)) / (PICK - REL)); return walk(lerp(p.x0, p.x1, u), p.face, m, { arms: 'push', lean: 1, hold: p.tr }); }
+    if (m < p.D + 0.06) return { x: p.x1, face: p.face, arms: m < p.D - 0.06 ? 'push' : 'down', legs: 'stand', blink };
+    if (i === 6) {
+      // dash to the zoom slider, then drag it to the right
+      if (m < 3.62) { const u = eio((m - (p.D + 0.06)) / (3.62 - p.D - 0.06)); return walk(lerp(p.x1, SLIDE0 - 52, u), 1, m * 1.5, { lines: u > 0.1 && u < 0.9 }); }
+      if (m < 4.02) { const u = eio((m - 3.62) / 0.4); return walk(lerp(SLIDE0, SLIDE1, u) - 52, 1, m * 0.7, { arms: 'push', lean: 1 }); }
+      if (m < PLAN[7].D - PICK) return { x: SLIDE1 - 52, face: -1, legs: 'stand', blink };
+    }
+  }
+  const XG = PLAN[8].x1;
+  // music: push up the glasses — the music clip appears by itself
+  if (m < 5.22) return { x: XG, face: -1, arms: m > 4.97 ? 'glasses' : 'down', legs: 'stand', glint: m > 5.04 && m < 5.18, blink: false };
+  // version flip: watching, then a cheer jump that snaps the zoom back
+  if (m < 5.96) return { x: XG, face: -1, arms: 'think', legs: 'stand', blink };
+  if (m < T_KICK + 0.02) { const u = (m - 5.96) / 0.26; return { x: XG, face: -1, arms: 'cheer', legs: 'jump', lift: 64 * Math.sin(Math.PI * c01(u)), smile: true, blink: false }; }
+  // dash to the playhead at 0 s
+  if (m < T_PUSH0) { const u = eio((m - T_KICK - 0.02) / (T_PUSH0 - T_KICK - 0.02)); return walk(lerp(XG, CX0 - 52, u), -1, m * 1.6, { lines: u > 0.05 && u < 0.95 }); }
+  // push the playhead through the whole ident
+  if (m < T_PUSH1) { const x = tx(previewT(m), view(m)); return walk(x - 52, 1, m * 1.4, { arms: 'push', lean: 1, lines: m > T_PUSH0 + 0.2 && m < T_PUSH1 - 0.2 }); }
+  const xe = tx(6.4, [0, 7.5]) - 52;
+  if (m < 7.72) return { x: xe, face: 1, arms: 'down', legs: 'stand', blink };
+  if (m < 8.02) return { x: xe, face: 1, arms: 'wipe', legs: 'stand', sweat: c01((m - 7.76) / 0.24), blink: true };
+  if (m < 8.3) { const u = (m - 8.02) / 0.28; return { x: xe, face: 1, arms: 'cheer', legs: u > 0.92 ? 'stand' : 'jump', lift: 82 * Math.sin(Math.PI * c01(u)), bob: u > 0.92 ? 1 : 0, smile: true, blink: false }; }
+  return { x: xe, face: -1, arms: 'glasses', legs: 'stand', glint: m > 8.36 && m < 8.52, smile: true };
+}
+
+// ---------------------------------------------------------------- camera
+const CAMK = [
+  [0.0, 960, 540, 1.035], [0.3, 960, 540, 1.0], [3.3, 960, 540, 1.012], [4.0, 960, 540, 1.022], [4.85, 960, 540, 1.0],
+  [5.3, 960, 540, 1.0], [6.15, 960, 540, 1.018], [6.4, 960, 540, 1.0], [T_ZOOM0, 960, 540, 1.0], [DUR - 0.07, PV_C[0], PV_C[1], PV_S],
+];
+const FIX = [PV.x / (1 - 1 / PV_S), PV.y / (1 - 1 / PV_S)];   // the point that stays put while the monitor fills the frame
+function camAt(m) {
+  m = Math.min(m, DUR - 0.07);
+  let i = 0; while (i < CAMK.length - 2 && m >= CAMK[i + 1][0]) i++;
+  const a = CAMK[i], b = CAMK[i + 1];
+  const u = c01((m - a[0]) / (b[0] - a[0]));
+  const last = i === CAMK.length - 2;
+  const e = last ? Math.pow(u, 2.2) : eio(u);
+  let s = a[3] * Math.pow(b[3] / a[3], e), cx = lerp(a[1], b[1], e), cy = lerp(a[2], b[2], e);
+  if (last) { cx = FIX[0] - (FIX[0] - 960) / s; cy = FIX[1] - (FIX[1] - 540) / s; }
+  if (i < CAMK.length - 2) { const hw = W / 2 / s, hh = H / 2 / s; cx = clamp(cx, hw, W - hw); cy = clamp(cy, hh, H - hh); }
+  const rot = 0.003 * Math.sin(m * 1.3) * (1 - ss(7.6, 8.1, m));
+  return { cx, cy, s, rot };
+}
+
+// ---------------------------------------------------------------- drawing helpers
+function rr(x, y, w, h, r) { ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r); ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath(); }
+function panelIn(m, i) { return eoBack(c01(0.45 + (m - 0.02 * i) / 0.16), 1.4); }
+
+function drawTopBar(m) {
+  const a = panelIn(m, 0);
+  ctx.save(); ctx.translate(0, (1 - a) * -60);
+  ctx.fillStyle = PANEL; ctx.fillRect(0, 0, W, 60);
+  ctx.fillStyle = LINE; ctx.fillRect(0, 59, W, 1);
+  // window dots + file tab
+  [RED, YEL, DIM2].forEach((c, i) => { ctx.fillStyle = c; ctx.fillRect(28 + i * 22, 24, 12, 12); });
+  ctx.fillStyle = PANEL2; rr(112, 14, 300, 46, 6); ctx.fill();
+  ctx.fillStyle = BEI; ctx.font = `500 19px ${CJK}`; ctx.textBaseline = 'middle';
+  ctx.fillText('娜乌斯嘉AI_片头.html', 132, 37);
+  ctx.fillStyle = RED; ctx.fillRect(112, 56, 300, 3);
+  // status
+  const stt = statusAt(m);
+  ctx.textAlign = 'center';
+  ctx.fillStyle = DIM; ctx.font = `500 17px ${CJK}`; ctx.fillText('克肆 · Claude Opus 5.5', 600, 31);
+  ctx.font = `800 27px ${CJK}`; const sw = ctx.measureText(stt.text).width + 56;
+  ctx.fillStyle = rgba(stt.col === DIM ? '#2d323e' : stt.col, 0.16); rr(1030 - sw / 2, 8, sw, 44, 8); ctx.fill();
+  ctx.strokeStyle = rgba(stt.col === DIM ? '#6f7584' : stt.col, 0.7); ctx.lineWidth = 1.5; rr(1030 - sw / 2 + 0.5, 8.5, sw - 1, 43, 8); ctx.stroke();
+  ctx.fillStyle = stt.col === DIM ? BEI : stt.col; ctx.fillText(stt.text, 1030 + 12, 31);
+  // live dot
+  { ctx.font = `800 27px ${CJK}`; const sw = ctx.measureText(stt.text).width + 56; ctx.fillStyle = Math.floor(m * 4) % 2 ? stt.col : rgba(stt.col, 0.35); ctx.fillRect(1030 - sw / 2 + 16, 25, 10, 10); }
+  ctx.textAlign = 'left';
+  // transport
+  { const px = 1450, py = 30, playing = m >= T_PUSH0 && m < T_PUSH1;
+    ctx.fillStyle = DIM; ctx.fillRect(px - 50, py - 8, 3, 16); ctx.beginPath(); ctx.moveTo(px - 45, py); ctx.lineTo(px - 33, py - 8); ctx.lineTo(px - 33, py + 8); ctx.fill();
+    ctx.fillStyle = playing ? RED : BEI; ctx.beginPath(); ctx.moveTo(px - 7, py - 11); ctx.lineTo(px + 12, py); ctx.lineTo(px - 7, py + 11); ctx.fill();
+    ctx.fillStyle = DIM; ctx.beginPath(); ctx.moveTo(px + 45, py); ctx.lineTo(px + 33, py - 8); ctx.lineTo(px + 33, py + 8); ctx.fill(); ctx.fillRect(px + 47, py - 8, 3, 16);
+    if (playing) { ctx.fillStyle = YEL; ctx.font = `800 17px ${MONO}`; ctx.textBaseline = 'middle'; ctx.fillText('×10', px + 64, py + 1); } }
+  // render button + progress
+  const rp = c01((m - T_REND0) / (T_REND1 - T_REND0));
+  const bx = 1660, by = 14, bw = 236, bh = 32;
+  ctx.fillStyle = PANEL2; rr(bx, by, bw, bh, 6); ctx.fill();
+  if (rp > 0) { ctx.save(); rr(bx, by, bw, bh, 6); ctx.clip(); ctx.fillStyle = rp >= 1 ? '#3a8f5c' : RED; ctx.fillRect(bx, by, bw * eio(rp), bh); ctx.restore(); }
+  ctx.fillStyle = BEI; ctx.font = `700 17px ${CJK}`; ctx.textAlign = 'center';
+  ctx.fillText(rp <= 0 ? '渲 染' : (rp < 1 ? `渲染中 ${Math.floor(eio(rp) * 100)}%` : '完成 ✓'), bx + bw / 2, by + bh / 2 + 1);
+  ctx.textAlign = 'left';
+  ctx.restore();
+}
+function statusAt(m) {
+  if (m < 0.13) return { text: '新建工程', col: DIM };
+  if (m >= T_REND1) return { text: '片头完成', col: '#5fd38a' };
+  if (m >= T_REND0) return { text: '渲染成片', col: YEL };
+  if (m >= T_PUSH0) return { text: '整条预览 ×10', col: YEL };
+  if (m >= T_KICK) return { text: '回到开头', col: DIM };
+  if (m >= T_VER0) { const n = Math.min(NVER, 1 + Math.floor((m - T_VER0) / T_VERD)); return { text: `迭代 · 第 ${n} 版`, col: n === NVER ? '#5fd38a' : YEL }; }
+  let cur = null; for (const tr of TR) if (m >= tr.D - 0.42) cur = tr;
+  return cur ? { text: `正在写：${cur.st}`, col: RED } : { text: '新建工程', col: DIM };
+}
+
+function drawCode(m) {
+  const a = panelIn(m, 1);
+  ctx.save(); ctx.translate((1 - a) * -120, 0); ctx.globalAlpha = c01(a * 1.3);
+  const P = CODE;
+  ctx.fillStyle = PANEL; rr(P.x, P.y, P.w, P.h, 8); ctx.fill();
+  ctx.strokeStyle = LINE; ctx.lineWidth = 1; rr(P.x + 0.5, P.y + 0.5, P.w - 1, P.h - 1, 8); ctx.stroke();
+  const car = caretAt(m);
+  const lines = car.file ? PY : SRC;
+  // tabs
+  ctx.font = `500 15px ${MONO}`; ctx.textBaseline = 'middle';
+  const tabs = ['index.html', 'gen_audio.py'];
+  const showPy = m >= TR[9].D - 0.42;
+  tabs.forEach((t, i) => {
+    if (i === 1 && !showPy) return;
+    const x = P.x + 12 + i * 170, act = i === car.file;
+    ctx.fillStyle = act ? PANEL2 : 'rgba(0,0,0,0)'; rr(x, P.y + 8, 158, 30, 5); ctx.fill();
+    ctx.fillStyle = act ? BEI : DIM; ctx.fillText(t, x + 14, P.y + 24);
+    if (act) { ctx.fillStyle = RED; ctx.fillRect(x, P.y + 36, 158, 2); }
+  });
+  ctx.fillStyle = LINE; ctx.fillRect(P.x, P.y + 44, P.w, 1);
+  // code area
+  const LH = 21, ROWS = 25, AX = P.x + 58, AY = P.y + 56, AW = P.w - 58 - 60;
+  const vf0 = m >= T_VER0 && m < T_VER0 + NVER * T_VERD;
+  const caretInt = Math.floor(car.line) + (vf0 || car.done ? 100000 : 0), frac = car.line - Math.floor(car.line);
+  let top = Math.floor(car.line) + frac - 19; top = Math.max(0, top);
+  const topI = Math.floor(top), off = (top - topI) * LH;
+  ctx.save(); ctx.beginPath(); ctx.rect(P.x + 1, AY - 6, AX + AW - P.x, ROWS * LH + 4); ctx.clip();
+  ctx.font = `14px ${MONO}`; ctx.textBaseline = 'alphabetic';
+  const verFlash = m >= T_VER0 && m < T_VER0 + NVER * T_VERD;
+  const vi = verFlash ? Math.floor((m - T_VER0) / T_VERD) : -1;
+  for (let r = -1; r < ROWS + 1; r++) {
+    const i = topI + r; if (i < 0 || i >= lines.length) continue;
+    const y = AY + r * LH - off;
+    // highlight the function block being written
+    if (car.focus >= 0 && i >= caretInt - 8 && i <= caretInt) { ctx.fillStyle = 'rgba(255,71,87,0.06)'; ctx.fillRect(P.x + 1, y - 2, P.w - 62, LH); }
+    if (verFlash) {   // diff flashes per version
+      const hsh = hash(i * 31 + vi * 977);
+      if (hsh < 0.16) { ctx.fillStyle = hsh < 0.08 ? 'rgba(95,211,138,0.16)' : 'rgba(255,71,87,0.16)'; ctx.fillRect(P.x + 1, y - 2, P.w - 62, LH); ctx.fillStyle = hsh < 0.08 ? '#5fd38a' : RED; ctx.fillText(hsh < 0.08 ? '+' : '−', P.x + 46, y + 14); }
+    }
+    ctx.fillStyle = i === caretInt ? BEI : DIM2; ctx.textAlign = 'right'; ctx.fillText(String(i + 1), P.x + 40, y + 14); ctx.textAlign = 'left';
+    if (i < caretInt) drawCodeLine(lines[i], AX, y + 14, AW, car.file === 1);
+    else if (i === caretInt) {
+      const n = lines[i].length * frac;
+      const ex = drawCodeLine(lines[i], AX, y + 14, AW, car.file === 1, n);
+      if (Math.floor(m * 6) % 2 === 0 || m < T_PUSH1) { ctx.fillStyle = RED; ctx.fillRect(Math.min(ex, AX + AW) + 1, y + 1, 9, 17); }
+    }
+  }
+  ctx.restore();
+  // minimap
+  const MX = P.x + P.w - 50, MY = AY - 4, MH = ROWS * LH, sc = MH / lines.length;
+  ctx.fillStyle = 'rgba(0,0,0,0.25)'; ctx.fillRect(MX - 4, MY, 46, MH);
+  for (let i = 0; i < lines.length; i += 2) {
+    const s = lines[i]; const ind = s.length - s.trimStart().length, len = s.trim().length;
+    if (!len) continue;
+    ctx.fillStyle = i <= caretInt ? 'rgba(185,191,204,0.42)' : 'rgba(185,191,204,0.09)';
+    ctx.fillRect(MX + Math.min(30, ind * 0.6), MY + i * sc, Math.max(2, Math.min(38, len * 0.32)), Math.max(1, sc * 1.6));
+  }
+  ctx.strokeStyle = RED; ctx.lineWidth = 1.5; ctx.strokeRect(MX - 3.5, MY + top * sc, 44, ROWS * sc);
+  // footer
+  ctx.fillStyle = PANEL; ctx.fillRect(P.x + 1, P.y + P.h - 32, P.w - 2, 31); ctx.fillStyle = LINE; ctx.fillRect(P.x + 1, P.y + P.h - 32, P.w - 2, 1);
+  ctx.fillStyle = DIM; ctx.font = `13px ${MONO}`; ctx.textBaseline = 'middle';
+  ctx.fillText(`Ln ${Math.floor(car.line) + 1}  ·  ${car.file ? 'Python' : 'HTML / Canvas 2D'}  ·  UTF-8`, P.x + 16, P.y + P.h - 16);
+  ctx.restore();
+}
+
+const DR = document.createElement('canvas'); DR.width = 192; DR.height = 108;
+const MZ = document.createElement('canvas'); MZ.width = 28; MZ.height = 9; const mctx = MZ.getContext('2d');
+const dctx = DR.getContext('2d');
+function drawDraft(img, m, mosaic) {
+  dctx.imageSmoothingEnabled = true; dctx.drawImage(img, 0, 0, 192, 108);
+  // title / subtitle zone (x 300–1620, y 200–720 of the frame) stays a block mosaic: the clean title is saved for the ident itself
+  const zx = 30, zy = 20, zw = 132, zh = 52;
+  if (mosaic) {
+  mctx.imageSmoothingEnabled = true; mctx.drawImage(DR, zx, zy, zw, zh, 0, 0, 28, 9);
+  dctx.imageSmoothingEnabled = false; dctx.drawImage(MZ, 0, 0, 28, 9, zx, zy, zw, zh); }
+  ctx.imageSmoothingEnabled = false; ctx.drawImage(DR, PV.x, PV.y, PV.w, PV.h); ctx.imageSmoothingEnabled = true;
+  ctx.save();
+  ctx.strokeStyle = 'rgba(236,232,225,0.13)'; ctx.lineWidth = 1; ctx.setLineDash([6, 6]);
+  ctx.beginPath();
+  for (let i = 1; i < 3; i++) { const x = PV.x + PV.w * i / 3, y = PV.y + PV.h * i / 3; ctx.moveTo(x + 0.5, PV.y); ctx.lineTo(x + 0.5, PV.y + PV.h); ctx.moveTo(PV.x, y + 0.5); ctx.lineTo(PV.x + PV.w, y + 0.5); }
+  ctx.stroke();
+  ctx.strokeStyle = 'rgba(245,196,81,0.28)'; ctx.strokeRect(PV.x + PV.w * 0.05 + 0.5, PV.y + PV.h * 0.05 + 0.5, PV.w * 0.9, PV.h * 0.9);
+  ctx.setLineDash([]);
+  ctx.fillStyle = 'rgba(9,10,14,0.7)'; rr(PV.x + PV.w - 150, PV.y + 14, 136, 26, 5); ctx.fill();
+  ctx.fillStyle = YEL; ctx.font = `700 14px ${CJK}`; ctx.textBaseline = 'middle'; ctx.textAlign = 'center';
+  ctx.fillText('草稿预览 · 1/10', PV.x + PV.w - 82, PV.y + 28); ctx.textAlign = 'left';
+  ctx.restore();
+}
+function drawPreview(m, final) {
+  const a = final ? 1 : panelIn(m, 2);
+  ctx.save();
+  if (!final) { ctx.translate(PV_C[0], PV_C[1]); ctx.scale(lerp(0.9, 1, a), lerp(0.9, 1, a)); ctx.translate(-PV_C[0], -PV_C[1]); ctx.globalAlpha = c01(a * 1.3); }
+  ctx.fillStyle = '#000'; ctx.fillRect(PV.x, PV.y, PV.w, PV.h);
+  const verFlash = m >= T_VER0 && m < T_VER0 + NVER * T_VERD;
+  if (verFlash) {
+    const vi = Math.min(NVER - 1, Math.floor((m - T_VER0) / T_VERD));
+    drawDraft(VERS[vi], m, true);
+    // version badge
+    const tag = `v${vi + 1}`;
+    ctx.fillStyle = vi === NVER - 1 ? '#3a8f5c' : RED; rr(PV.x + PV.w - 120, PV.y + 50, 96, 46, 6); ctx.fill();
+    ctx.fillStyle = BEI; ctx.font = `800 28px ${MONO}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(tag, PV.x + PV.w - 72, PV.y + 74); ctx.textAlign = 'left';
+    // stacked thumbnails of earlier versions sliding off
+    for (let j = 0; j < vi; j++) {
+      const age = vi - j; if (age > 4) continue;
+      ctx.globalAlpha = 0.85 - age * 0.18;
+      const tw = 150, th = 84, x = PV.x + 20 + (4 - age) * 0 + (age - 1) * 160, y = PV.y + PV.h - th - 20;
+      mctx.imageSmoothingEnabled = true; mctx.drawImage(VERS[j], 0, 0, 28, 9); ctx.imageSmoothingEnabled = false; ctx.drawImage(MZ, 0, 0, 28, 9, x, y, tw, th); ctx.imageSmoothingEnabled = true; ctx.strokeStyle = LINE2; ctx.strokeRect(x + 0.5, y + 0.5, tw - 1, th - 1);
+      ctx.fillStyle = BEI; ctx.font = `700 15px ${MONO}`; ctx.textBaseline = 'top'; ctx.fillText(`v${j + 1}`, x + 6, y + 5);
+      ctx.globalAlpha = 1;
+    }
+  } else {
+    const w = fxFrame.contentWindow;
+    w.__LY = layersAt(m);
+    w.renderFrame(previewT(m));
+    const src = w.document.getElementById('stage');
+    // render pass: rendered part crisp, the rest still being drawn
+    if (m >= T_REND0 && m < T_REND1) {
+      const u = eio((m - T_REND0) / (T_REND1 - T_REND0));
+      ctx.globalAlpha = 0.28; ctx.drawImage(src, PV.x, PV.y, PV.w, PV.h); ctx.globalAlpha = 1;
+      const hy = Math.round(PV.h * u);
+      ctx.drawImage(src, 0, 0, 1920, 1080 * u, PV.x, PV.y, PV.w, hy);
+      ctx.fillStyle = rgba(RED, 0.9); ctx.fillRect(PV.x, PV.y + hy - 2, PV.w, 3);
+    } else if (final || m >= T_REND1) ctx.drawImage(src, PV.x, PV.y, PV.w, PV.h);
+    else { const tp = previewT(m); drawDraft(src, m, tp >= 2.75); }
+  }
+  if (!final) {
+    // flash on every new layer
+    let fl = 0; for (const tr of TR) { const tau = m - tr.D; if (tau >= 0 && tau < 0.3) fl = Math.max(fl, Math.exp(-tau / 0.08)); }
+    const fade = 1 - ss(T_ZOOM0, T_ZOOM0 + 0.35, m);
+    ctx.globalAlpha = fade;
+    ctx.strokeStyle = fl > 0.02 ? rgba(RED, 0.4 + 0.6 * fl) : LINE2; ctx.lineWidth = 1.5 + 3 * fl;
+    ctx.strokeRect(PV.x - 1, PV.y - 1, PV.w + 2, PV.h + 2);
+    if (m < T_REND1 && !verFlash) {
+      ctx.fillStyle = 'rgba(9,10,14,0.66)'; rr(PV.x + 14, PV.y + 14, 168, 30, 5); ctx.fill();
+      ctx.fillStyle = Math.floor(m * 3) % 2 ? RED : rgba(RED, 0.4); ctx.fillRect(PV.x + 26, PV.y + 25, 9, 9);
+      ctx.fillStyle = BEI; ctx.font = `600 15px ${MONO}`; ctx.textBaseline = 'middle';
+      ctx.fillText(`预览  ${fmtT(previewT(m))}`.replace('预览', 'PREVIEW'), PV.x + 44, PV.y + 30);
+    }
+    ctx.globalAlpha = 1;
+  }
+  ctx.restore();
+}
+function fmtT(t) { const s = Math.floor(t), f = Math.floor((t - s) * 60); return `00:0${s}:${String(f).padStart(2, '0')}`.replace('00:010', '00:10'); }
+
+function drawBand(m) {
+  const a = panelIn(m, 3);
+  ctx.save(); ctx.globalAlpha = c01(a * 1.3);
+  ctx.textBaseline = 'middle';
+  // (transport and timecode moved to the top bar / ruler)
+  const px = -9999, py = 750;
+  ctx.fillStyle = DIM; ctx.fillRect(px - 64, py - 9, 4, 18); ctx.beginPath(); ctx.moveTo(px - 58, py); ctx.lineTo(px - 44, py - 9); ctx.lineTo(px - 44, py + 9); ctx.fill();
+  const playing = m >= T_PUSH0 && m < T_PUSH1;
+  ctx.fillStyle = playing ? RED : BEI;
+  ctx.beginPath(); ctx.moveTo(px - 8, py - 13); ctx.lineTo(px + 14, py); ctx.lineTo(px - 8, py + 13); ctx.fill();
+  ctx.fillStyle = DIM; ctx.beginPath(); ctx.moveTo(px + 58, py); ctx.lineTo(px + 44, py - 9); ctx.lineTo(px + 44, py + 9); ctx.fill(); ctx.fillRect(px + 60, py - 9, 4, 18);
+  if (playing) { ctx.fillStyle = YEL; ctx.font = `800 18px ${MONO}`; ctx.fillText('×10', px + 84, py + 1); }
+  // zoom slider
+  const v = view(m), z = v[2];
+  const sx0 = 1560, sx1 = 1832, sy = 750;
+  ctx.strokeStyle = DIM; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(sx1 + 34, sy - 3, 7, 0, Math.PI * 2); ctx.moveTo(sx1 + 39, sy + 2); ctx.lineTo(sx1 + 45, sy + 8); ctx.stroke();
+  ctx.fillStyle = LINE2; ctx.fillRect(sx0, sy - 2, sx1 - sx0, 4);
+  ctx.fillStyle = rgba(RED, 0.8); ctx.fillRect(sx0, sy - 2, (sx1 - sx0) * z, 4);
+  const hx = lerp(sx0, sx1, z);
+  ctx.fillStyle = z > 0.02 ? RED : BEI; rr(hx - 8, sy - 13, 16, 26, 4); ctx.fill();
+  ctx.restore();
+}
+
+function drawTimeline(m) {
+  const a = panelIn(m, 4);
+  ctx.save(); ctx.translate(0, (1 - a) * 200);
+  const v = view(m);
+  ctx.fillStyle = PANEL; ctx.fillRect(TL.x, TL.y, TL.w, TL.h + 40);
+  ctx.fillStyle = LINE; ctx.fillRect(TL.x, TL.y, TL.w, 1);
+  // ruler
+  ctx.fillStyle = BEI; ctx.font = `700 16px ${MONO}`; ctx.textBaseline = 'middle'; ctx.fillText(fmtT(previewT(m)), TL.x + 10, TL.y + RULER_H / 2 + 1);
+  ctx.fillStyle = PANEL2; ctx.fillRect(CX0, TL.y + 1, CX1 - CX0, RULER_H - 1);
+  const step = (v[1] - v[0]) > 6 ? 0.5 : 0.25;
+  ctx.font = `12px ${MONO}`; ctx.textBaseline = 'middle';
+  ctx.save(); ctx.beginPath(); ctx.rect(CX0, TL.y, CX1 - CX0, TL.h + 40); ctx.clip();
+  for (let t = Math.ceil(v[0] / step) * step; t <= v[1] + 1e-6; t += step) {
+    const x = Math.round(tx(t, v)) + 0.5, major = Math.abs(t - Math.round(t)) < 1e-6;
+    ctx.fillStyle = major ? DIM : DIM2; ctx.fillRect(x, TL.y + (major ? 10 : 17), 1, major ? 16 : 9);
+    if (major) { ctx.fillStyle = DIM; ctx.fillText(`${Math.round(t)}s`, x + 4, TL.y + 9); }
+    ctx.fillStyle = 'rgba(255,255,255,0.025)'; ctx.fillRect(x, TL.y + RULER_H, 1, TL.h);
+  }
+  ctx.restore();
+  // tracks
+  for (const tr of TR) {
+    const y = tr.y, on = m >= tr.D;
+    ctx.fillStyle = tr.row % 2 ? 'rgba(255,255,255,0.012)' : 'rgba(0,0,0,0.12)'; ctx.fillRect(TL.x, y, TL.w, ROW_H);
+    ctx.fillStyle = on ? tr.col : DIM2; ctx.fillRect(TL.x + 12, y + 8, 7, 7);
+    ctx.fillStyle = on ? BEI : DIM2; ctx.font = `600 14px ${CJK}`; ctx.fillText(tr.name, TL.x + 28, y + ROW_H / 2 + 1);
+  }
+  ctx.fillStyle = LINE; ctx.fillRect(CX0 - 1, TL.y, 1, TL.h + 40);
+  // clips
+  ctx.save(); ctx.beginPath(); ctx.rect(CX0, TL.y + RULER_H, CX1 - CX0, TL.h); ctx.clip();
+  for (const tr of TR) {
+    if (m < tr.D) continue;
+    const x0 = tx(tr.t0, v), x1 = tx(tr.t1, v);
+    const tau = m - tr.D;
+    const sq = tau < 0.3 ? Math.exp(-tau / 0.07) * Math.cos(tau * 28) : 0;
+    const hh = (ROW_H - 6) * (1 - 0.35 * sq), yy = tr.y + 3 + (ROW_H - 6 - hh) / 2;
+    const unroll = tr.k === 'music' ? 1 : eo(tau / 0.22), lx = dropX(tr);
+    const L = lerp(lx - 59, Math.max(x0, CX0 - 4), unroll), Rr = lerp(lx + 59, x1, unroll);
+    drawClip(tr, L, yy, Rr - L, hh, m, v, tau);
+  }
+  ctx.restore();
+  // playhead
+  const ph = tx(previewT(m), v);
+  if (m >= 0.32 && m < T_PUSH1 && ph > CX0 - 2 && ph < CX1 + 2) {
+    ctx.fillStyle = RED; ctx.fillRect(Math.round(ph) - 1, TL.y + 4, 2, TL.h + 30);
+    ctx.beginPath(); ctx.moveTo(ph - 8, TL.y + 2); ctx.lineTo(ph + 8, TL.y + 2); ctx.lineTo(ph + 8, TL.y + 14); ctx.lineTo(ph, TL.y + 22); ctx.lineTo(ph - 8, TL.y + 14); ctx.fill();
+  }
+  ctx.restore();
+}
+function drawClip(tr, x, y, w, h, m, v, tau) {
+  const bright = tr.col !== DIM;
+  const flash = tau < 0.25 ? Math.exp(-tau / 0.06) : 0;
+  ctx.fillStyle = bright ? rgba(tr.col, 0.82) : 'rgba(111,117,132,0.35)';
+  rr(x, y, Math.max(3, w), h, 4); ctx.fill();
+  if (flash > 0.01) { ctx.fillStyle = `rgba(255,255,255,${0.6 * flash})`; rr(x, y, Math.max(3, w), h, 4); ctx.fill(); }
+  if (tr.k === 'music' && WAVE) {   // waveform drawn in left → right
+    const reveal = eo(tau / 0.35);
+    ctx.fillStyle = rgba(BEI, 0.75);
+    const xr = x + w * reveal;
+    for (let px = Math.max(CX0, x); px < Math.min(xr, CX1); px += 2) {
+      const t = v[0] + (px - CX0) / (CX1 - CX0) * (v[1] - v[0]);
+      const i = Math.floor(t / 10 * WAVE.length); if (i < 0 || i >= WAVE.length) continue;
+      const a = WAVE[i] * (h / 2 - 1);
+      ctx.fillRect(px, y + h / 2 - a, 1.4, 2 * a);
+    }
+  }
+  // keyframes
+  ctx.font = `700 13px ${CJK}`; const lend = Math.max(x, CX0) + 16 + ctx.measureText(tr.label).width;
+  if (tr.keys) {
+    ctx.fillStyle = tr.col === BEI ? '#2a2620' : '#fff6e6';
+    for (const k of tr.keys) { const kx = tx(k, v); if (kx < lend || kx > x + w - 4) continue; ctx.save(); ctx.translate(kx, y + h / 2); ctx.rotate(Math.PI / 4); ctx.fillRect(-3.5, -3.5, 7, 7); ctx.restore(); }
+  }
+  if (tr.k !== 'music') {
+    ctx.save(); rr(x, y, Math.max(3, w), h, 4); ctx.clip();
+    ctx.fillStyle = tr.col === RED ? '#fff3f0' : '#1b1712'; ctx.font = `700 13px ${CJK}`; ctx.textBaseline = 'middle';
+    const lx = Math.max(x, CX0) + 8;
+    ctx.fillText(tr.label, lx + (tr.keys ? 0 : 0), y + h / 2 + 1);
+    ctx.restore();
+  }
+}
+
+// the clip held in front while dragging, then falling into its track
+function drawCarried(m, ks) {
+  const v = view(m);
+  const handY = BAND_Y - 6.5 * KC;
+  for (const p of PLAN) {
+    const tr = p.tr, tPick = p.D - PICK, tRel = p.D - REL;
+    let x, y, w, h, rot = 0;
+    if (m >= tPick && m < tRel) {
+      const pop = eoBack((m - tPick) / 0.1, 2.2);
+      x = ks.x + p.face * HAND; y = handY; w = 118 * pop; h = 24 * pop;
+      rot = 0.04 * Math.sin((m - tPick) * 40) * p.face;
+    } else if (m >= tRel && m < p.D) {
+      const u = (m - tRel) / REL;
+      const tgx = dropX(tr), tgy = tr.y + ROW_H / 2;
+      x = lerp(p.x1 + p.face * HAND, tgx, u); y = lerp(handY, tgy, u * u); w = 118; h = lerp(24, ROW_H - 6, u);
+      ctx.fillStyle = rgba(tr.col, 0.18); ctx.fillRect(x - w / 2, handY, w, y - handY);   // fall streak
+    } else continue;
+    ctx.save(); ctx.translate(x, y); ctx.rotate(rot);
+    ctx.shadowColor = 'rgba(0,0,0,0.5)'; ctx.shadowBlur = 12; ctx.shadowOffsetY = 6;
+    ctx.fillStyle = rgba(tr.col, 0.97); rr(-w / 2, -h / 2, w, h, 4); ctx.fill();
+    ctx.shadowColor = 'transparent';
+    if (w > 90) { ctx.fillStyle = tr.col === RED ? '#fff3f0' : '#1b1712'; ctx.font = `800 14px ${CJK}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(tr.name, 0, 1); ctx.textAlign = 'left'; }
+    ctx.restore();
+  }
+  // landing sparks
+  for (const p of PLAN) {
+    const tau = m - p.D; if (tau < 0 || tau > 0.3) continue;
+    const tgx = dropX(p.tr), tgy = p.tr.y + ROW_H / 2;
+    for (let i = 0; i < 8; i++) {
+      const a = (i / 8) * Math.PI * 2 + hash(i + p.D * 100) * 0.6, sp = 160 + 140 * hash(i * 7 + 3);
+      const xx = tgx + Math.cos(a) * sp * tau * 1.4, yy = tgy + Math.sin(a) * sp * tau * 0.6 + 300 * tau * tau;
+      ctx.fillStyle = rgba(i % 2 ? p.tr.col : BEI, 1 - tau / 0.3); ctx.fillRect(Math.round(xx) - 3, Math.round(yy) - 3, 6, 6);
+    }
+  }
+}
+
+// ---------------------------------------------------------------- frame
+function frame(m) {
+  m = clamp(m, 0, DUR);
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.fillStyle = BG; ctx.fillRect(0, 0, W, H);
+  const cam = camAt(m);
+  ctx.translate(W / 2, H / 2); ctx.rotate(cam.rot); ctx.scale(cam.s, cam.s); ctx.translate(-cam.cx, -cam.cy);
+  if (m >= DUR - 0.07 - 1e-6) { drawPreview(m, true); return; }
+  // faint backdrop grid
+  ctx.strokeStyle = 'rgba(255,255,255,0.025)'; ctx.lineWidth = 1;
+  ctx.beginPath(); for (let x = 0; x <= W; x += 48) { ctx.moveTo(x + 0.5, 0); ctx.lineTo(x + 0.5, H); } for (let y = 0; y <= H; y += 48) { ctx.moveTo(0, y + 0.5); ctx.lineTo(W, y + 0.5); } ctx.stroke();
+  drawCode(m);
+  drawPreview(m, false);
+  drawBand(m);
+  drawTimeline(m);
+  const ks = kesiState(m);
+  drawKesi(ks.x, BAND_Y, ks, m);
+  drawCarried(m, ks);
+  drawTopBar(m);
+  // the zoom into the monitor: everything but the picture fades away
+  if (m >= T_ZOOM0) {
+    const u = ss(T_ZOOM0 + 0.2, DUR - 0.12, m);
+    if (u > 0) { ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalAlpha = u; ctx.translate(W / 2, H / 2); ctx.scale(cam.s, cam.s); ctx.translate(-cam.cx, -cam.cy); ctx.fillStyle = '#000'; ctx.fillRect(-W, -H, PV.x + W, 3 * H); ctx.fillRect(PV.x + PV.w, -H, 3 * W, 3 * H); ctx.fillRect(PV.x, -H, PV.w, PV.y + H); ctx.fillRect(PV.x, PV.y + PV.h, PV.w, 3 * H); ctx.globalAlpha = 1; drawPreview(m, true); }
+  }
+}
+
+// ---------------------------------------------------------------- loading + export hook
+function loadImg(src) { return new Promise(r => { const im = new Image(); im.onload = () => r(im); im.src = src; }); }
+function parseWave(buf) {
+  const dv = new DataView(buf); let p = 12, off = 0, len = 0, ch = 2;
+  while (p < dv.byteLength - 8) {
+    const id = String.fromCharCode(dv.getUint8(p), dv.getUint8(p + 1), dv.getUint8(p + 2), dv.getUint8(p + 3));
+    const sz = dv.getUint32(p + 4, true);
+    if (id === 'fmt ') ch = dv.getUint16(p + 10, true);
+    if (id === 'data') { off = p + 8; len = sz; break; }
+    p += 8 + sz;
+  }
+  const n = len / 2 / ch, B = 900, out = new Float32Array(B);
+  for (let b = 0; b < B; b++) {
+    let mx = 0; const i0 = Math.floor(b * n / B), i1 = Math.floor((b + 1) * n / B);
+    for (let i = i0; i < i1; i += 8) { const s = Math.abs(dv.getInt16(off + i * 2 * ch, true)) / 32768; if (s > mx) mx = s; }
+    out[b] = Math.min(1, mx * 1.25);
+  }
+  return out;
+}
+window.READY = (async () => {
+  const [a, b, w] = await Promise.all([
+    fetch('../case/index.html').then(r => r.text()),
+    fetch('../case/gen_audio.py').then(r => r.text()),
+    fetch('../case/music.wav').then(r => r.arrayBuffer()),
+  ]);
+  SRC = a.split('\n'); PY = b.split('\n'); WAVE = parseWave(w);
+  for (let i = 1; i <= NVER; i++) VERS.push(await loadImg(`vers/v${i}.png`));
+  await new Promise(r => { const chk = () => (fxFrame.contentWindow && fxFrame.contentWindow.renderFrame) ? r() : setTimeout(chk, 50); chk(); });
+  await document.fonts.ready;
+  frame(0);
+  return true;
+})();
+window.renderFrame = function (m) { frame(m); };
+window.DURATION = DUR;
+})();
+</script>
+</body>
+</html>

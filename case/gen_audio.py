@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Original score + sound design for the 10 s 娜乌斯嘉AI channel ident.
+"""Original score + sound design for the 7.5 s 娜乌斯嘉AI channel ident.
 
-120 BPM, 4/4, A minor, Am–F–C–G.  48 kHz / 16-bit / stereo / exactly 10.0 s (5 bars).
+120 BPM, 4/4, A minor, Am–F–C–G.  48 kHz / 16-bit / stereo / exactly 7.5 s.
 Every sound effect is placed on the frame of its visual action in index.html
 (the timing constants below mirror the ones in the page).
 
@@ -14,7 +14,7 @@ from scipy import signal
 from scipy.ndimage import maximum_filter1d, minimum_filter1d, uniform_filter1d
 
 SR = 48000
-DUR = 10.0
+DUR = 7.5
 N = int(SR * DUR)
 HERE = os.path.dirname(os.path.abspath(__file__))
 rng = np.random.default_rng(20261027)
@@ -22,15 +22,15 @@ rng = np.random.default_rng(20261027)
 # ----------------------------------------------------------------- timeline (mirrors index.html)
 T_STR = 1.4                      # road straightens, car speeds into the sun
 T_BOOM = 2.0                     # sun explosion
-SWEEP0, SWEEPD = 2.8, 0.3
-T_FLY = 5.8                      # red pixel flies above 娜
-LAND = [6.25, 6.5, 6.75, 7.0]
-PERIOD_T = 7.5                   # period lands + glitch + subtitle reveal (all together)
-SUB_T0 = 7.5
-SUB_LOCK0, SUB_LOCKD, SUB_N = 7.58, 0.045, 11
-T_SUBFL = 8.2                   # subtitle locked: second sonic logo
-T_GLINT, T_GLINTD = 8.1, 0.62   # glint across the title in the hold
-T_CRT = 9.0
+SWEEP0, SWEEPD = 2.8, 0.1
+T_FLY = 3.35                      # red pixel flies above 娜
+LAND = [3.75, 4.0, 4.25, 4.5]
+PERIOD_T = 5.0                   # period lands + glitch + subtitle reveal (all together)
+SUB_T0 = 5.0
+SUB_LOCK0, SUB_LOCKD, SUB_N = 5.08, 0.045, 11
+T_SUBFL = 5.7                   # subtitle locked: second sonic logo
+T_GLINT, T_GLINTD = 5.6, 0.62   # glint across the title in the hold
+T_CRT = 6.5
 GLITCH1 = (PERIOD_T, PERIOD_T + 11 / 60)
 GLITCH2 = (PERIOD_T + 13 / 60, PERIOD_T + 23 / 60)
 SILENCES = [(1.75, 2.0), (T_CRT - 0.25, T_CRT)]
@@ -200,7 +200,7 @@ mus_arp = np.zeros((2, N))
 mus_bass = np.zeros((2, N))
 mus_drm = np.zeros((2, N))
 
-PROG = ['Am', 'F', 'C', 'G', 'F']
+PROG = ['Am', 'F', 'C', 'F']
 PAD = {'Am': [57, 60, 64], 'F': [57, 60, 65], 'C': [55, 60, 64], 'G': [55, 59, 62]}
 ROOT = {'Am': 33, 'F': 29, 'C': 36, 'G': 31}
 ARP = {'Am': [69, 72, 76, 81], 'F': [69, 72, 77, 81], 'C': [67, 72, 76, 79], 'G': [67, 71, 74, 79]}
@@ -247,7 +247,7 @@ xf = np.clip((tN - 1.75) / 0.25, 0, 1)
 mus_pad = pad_muff * (1 - xf) * 0.62 + pad_open * xf * 0.7
 # synthwave pump from the kick
 pump = np.ones(N)
-for k in range(4, 18):
+for k in range(4, 14):
     b = k * 0.5
     i0 = S(b)
     seg = tN[i0:] - b
@@ -278,7 +278,7 @@ mus_arp = arp_muff * (1 - xf) * 0.75 + mus_arp * xf
 # bass: synthwave 8ths with a short glide, 2.0 → 10.75, plus the final note
 BASS_PAT = [0, 0, 12, 0, 0, 12, 0, 12]
 events = []
-for b in range(1, 5):
+for b in range(1, 4):
     ch = PROG[b]
     for e8 in range(8):
         t0 = 2.0 * b + 0.25 * e8
@@ -331,13 +331,13 @@ def hat(open_=False):
     return fade_in(x, 2.0)
 
 
-for k in range(4, 18):                     # 2.0 … 10.5
+for k in range(4, 14):                     # 2.0 … 10.5
     b = k * 0.5
     addm(mus_drm, kick(), b, 0.95)
-for b in range(1, 5):
+for b in range(1, 4):
     for off in (0.5, 1.5):
         addm(mus_drm, snare(), 2.0 * b + off, 0.55, pan=0.05)
-for k in range(0, 35):
+for k in range(0, 27):
     t0 = k * 0.25
     if 1.75 <= t0 < 2.0 or t0 >= T_CRT - 0.25:
         continue
@@ -431,32 +431,27 @@ for ch, pan in ((0, -0.5), (1, 0.5)):
 # 2.4–4.4 suction: denser and denser "whoosh" grains + a big sweep per glyph + a soft tick per settled pixel column
 tg = 2.38
 gap = 0.13
-while tg < 4.35:
+while tg < 3.3:
     dur = 0.09
     add(sfx, whoosh(dur, 900, 3200, q=2.2, peak=0.7), tg, 0.13 + 0.1 * (tg - 2.4) / 2, pan=rng.uniform(-0.7, 0.7))
-    gap = max(0.032, gap * 0.93)
+    gap = max(0.03, gap * 0.86)
     tg += gap
+# one big swoosh across the whole title, with a tick for every settled pixel column
+add(sfx, whoosh(0.62, 600, 5200, q=1.2, peak=0.7), SWEEP0 - 0.08, 0.85, pan=0.0)
 for k in range(5):
-    s0 = SWEEP0 + SWEEPD * k
-    add(sfx, whoosh(0.34, 700, 4200, q=1.3, peak=0.75), s0 - 0.03, 0.5, pan=-0.6 + 0.3 * k)
     for c in range(20):
         if c % 2 == 0:
             continue
         x = (c + 1) / 20
-        tl = s0 + SWEEPD * np.arccos(1 - 2 * x) / np.pi
-        add(sfx, click(rng.uniform(2600, 4200), 0.004, 0.4), tl, 0.16, pan=-0.6 + 0.3 * k + 0.012 * c)
+        tl = SWEEP0 + 5 * SWEEPD * np.arccos(1 - 2 * (k + x) / 5) / np.pi
+        add(sfx, click(rng.uniform(2600, 4200), 0.004, 0.4), tl, 0.14, pan=-0.6 + 0.3 * k + 0.012 * c)
 
 # 4.5 / 4.58 red extrusion pops out, layer by layer ("咔")
-for t0, g in ((4.5, 0.75), (4.58, 0.6)):
+for t0, g in ((3.3, 0.75), (3.36, 0.6)):
     n = S(0.12)
     t = tt(n)
     x = filt(noise(n), 'band', [1400, 5200]) * np.exp(-t / 0.012) + 0.9 * sine(250 - 900 * t, n) * np.exp(-t / 0.035)
     add(sfx, fade_in(np.tanh(1.5 * x), 2), t0, g)
-# 5.0 "AI" turns warm yellow: a bright two-partial chime
-n = S(0.5)
-t = tt(n)
-ch = sine(1318.5, n) * np.exp(-t / 0.16) + 0.5 * sine(1975.5, n) * np.exp(-t / 0.1) + 0.5 * square(659.25, n, 0.25) * np.exp(-t / 0.03)
-add(sfx, fade_in(ch, 2), 5.0, 0.7)
 # 5.5 glow powers on left → right: buzzing flicker that follows the visual flicker
 n = S(0.5)
 t = tt(n)
@@ -471,8 +466,8 @@ for k in range(5):
     gate = np.maximum(gate, g)
 gate = uniform_filter1d(gate, S(0.002))
 hum *= gate * np.exp(-np.clip(t - 0.3, 0, None) / 0.12)
-add(sfx, fade_in(hum, 3), 5.5, 0.75)
-add(sfx, click(1800, 0.008, 0.8, 0.05), 5.5, 0.8)
+add(sfx, fade_in(hum, 3), 3.25, 0.6)
+add(sfx, click(1800, 0.008, 0.8, 0.05), 3.25, 0.6)
 # 8.7–9.5 reverse-reverb "inhale" into the period landing / glitch hit
 n = S(1.3)
 t = tt(n)
@@ -515,7 +510,7 @@ for (a, b), g in ((GLITCH1, 1.0), (GLITCH2, 0.55)):
 # 6.0 the red pixel flies to 娜, 6.37 it drops
 add(sfx, whoosh(0.28, 600, 3000, q=1.8, peak=0.6), T_FLY, 0.32, pan=-0.3)
 n = S(0.13)
-add(sfx, fade_in(sine(1400 * 0.45 ** (tt(n) / 0.13), n) * np.linspace(0.2, 1, n) ** 2, 3), T_FLY + 0.34, 0.12, pan=-0.5)
+add(sfx, fade_in(sine(1400 * 0.45 ** (tt(n) / 0.13), n) * np.linspace(0.2, 1, n) ** 2, 3), T_FLY + 0.27, 0.12, pan=-0.5)
 
 # 6.5–9.0 landings: 8-bit note climbing the scale + a soft weight thump
 SCALE = [69, 71, 72, 74]
